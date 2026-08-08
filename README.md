@@ -31,6 +31,8 @@ specialists. Its user-facing conversation is paired with an operations panel
 that demonstrates tool activity, delegation, approvals, queued commands, and
 synchronization state.
 
+[Open the hosted performance coach demo](https://example-kohl-phi.vercel.app).
+
 ## Local development
 
 Requirements:
@@ -85,17 +87,15 @@ underlying ports automatically. The native Eve harness continues to use port
 
 ## Vercel
 
-The hosted project uses two Vercel projects. The example remains source-only so
-adopters run it with their own Convex deployment and credentials:
+The hosted project uses three Vercel projects. The public example is a
+reviewer-facing demonstration backed by the production Convex deployment;
+adopters should still run their own deployment and credentials:
 
 | Project | Root directory | Build command | Configuration |
 | --- | --- | --- | --- |
 | Marketing and docs | `apps/web` | auto-detected (`bun run build`) | Next.js preset |
+| Performance coach demo | `apps/example` | auto-detected (`npm run build`) | `NEXT_PUBLIC_CONVEX_URL` points to the production demo deployment |
 | Eve coach | `apps/eve-agent` | `bun run build` | Link with `bun run link`; Eve emits Vercel Build Output |
-
-Do not create a public Vercel project for `apps/example`. Run it locally after
-selecting a Convex development deployment and configuring that deployment with
-the Eve URL and shared service credential.
 
 The Eve project uses Vercel AI Gateway through project OIDC with the default
 `openai/gpt-5.6-luna` model and high reasoning. Luna requires paid AI Gateway
