@@ -1,12 +1,13 @@
 {
-  "extends": "../../tsconfig.base.json",
+  "extends": "./tsconfig.json",
   "compilerOptions": {
     "declaration": true,
     "emitDeclarationOnly": false,
+    "noEmit": false,
     "outDir": "dist",
-    "rootDir": ".",
-    "sourceMap": true
+    "rootDir": "src",
+    "sourceMap": true,
+    "tsBuildInfoFile": "dist/.tsbuildinfo"
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "convex/**/*.ts"],
-  "exclude": ["src/**/*.test.ts", "convex/**/*.test.ts"]
+  "exclude": ["src/**/*.test.ts"]
 }

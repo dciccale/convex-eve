@@ -1,9 +1,9 @@
 import { ConvexError, v } from "convex/values";
 import type { MessageStreamEvent } from "eve/client";
 import type { EveMessageData } from "eve/react";
-import { decideStreamIndex } from "../src/cursor";
-import { canClaimDelivery } from "../src/delivery";
-import { applyEveEvent } from "../src/projection";
+import { decideStreamIndex } from "../cursor";
+import { canClaimDelivery } from "../delivery";
+import { applyEveEvent } from "../projection";
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";

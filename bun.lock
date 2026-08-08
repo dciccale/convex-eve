@@ -86,7 +86,7 @@
     },
     "packages/convex-eve": {
       "name": "convex-eve",
-      "version": "0.1.0-alpha.0",
+      "version": "0.1.0-alpha.1",
       "dependencies": {
         "convex-helpers": "0.1.122",
       },

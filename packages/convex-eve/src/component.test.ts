@@ -2,11 +2,11 @@
 
 import { convexTest } from "convex-test";
 import { expect, test } from "vitest";
-import { api } from "../convex/_generated/api.js";
-import schema from "../convex/schema.js";
+import { api } from "./component/_generated/api.js";
+import schema from "./component/schema.js";
 import { register } from "./test.js";
 
-const modules = import.meta.glob("../convex/**/*.ts");
+const modules = import.meta.glob("./component/**/*.ts");
 
 test("component functions enforce actor isolation and validated returns", async () => {
   const t = convexTest(schema, modules);

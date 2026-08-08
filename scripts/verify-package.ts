@@ -91,7 +91,7 @@ try {
   await assertFile(packageRoot, "LICENSE");
 
   const componentTypes = await readFile(
-    join(packageRoot, "dist/convex/_generated/component.d.ts"),
+    join(packageRoot, "dist/component/_generated/component.d.ts"),
     "utf8",
   );
   if (/\n\s+any,\n\s+Name/g.test(componentTypes)) {

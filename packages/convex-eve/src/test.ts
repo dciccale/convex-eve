@@ -2,9 +2,9 @@
 
 import type { GenericSchema, SchemaDefinition } from "convex/server";
 import type { TestConvex } from "convex-test";
-import schema from "../convex/schema.js";
+import schema from "./component/schema.js";
 
-export const modules = import.meta.glob("../convex/**/*.ts");
+export const modules = import.meta.glob("./component/**/*.ts");
 
 /** Register convex-eve with a convex-test instance. */
 export function register(

@@ -4,5 +4,5 @@
     "noEmit": true,
     "types": ["vitest/globals"]
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "convex/**/*.ts"]
+  "include": ["src/**/*.ts", "src/**/*.tsx"]
 }

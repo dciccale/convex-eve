@@ -1,6 +1,6 @@
 {
   "name": "convex-eve",
-  "version": "0.1.0-alpha.0",
+  "version": "0.1.0-alpha.1",
   "description": "Convex-native persistence and reactive chat projections for eve agents",
   "license": "Apache-2.0",
   "repository": {
@@ -26,7 +26,6 @@
   ],
   "files": [
     "dist",
-    "convex",
     "src",
     "!src/**/*.test.*",
     "LICENSE"
@@ -34,48 +33,48 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "types": "./dist/src/index.d.ts",
-      "import": "./dist/src/index.js",
-      "default": "./dist/src/index.js"
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
     },
     "./react": {
-      "types": "./dist/src/react.d.ts",
-      "import": "./dist/src/react.js",
-      "default": "./dist/src/react.js"
+      "types": "./dist/react.d.ts",
+      "import": "./dist/react.js",
+      "default": "./dist/react.js"
     },
     "./test": "./src/test.ts",
     "./_generated/component.js": {
-      "types": "./dist/convex/_generated/component.d.ts"
+      "types": "./dist/component/_generated/component.d.ts"
     },
     "./_generated/component": {
-      "types": "./dist/convex/_generated/component.d.ts"
+      "types": "./dist/component/_generated/component.d.ts"
     },
     "./convex.config.js": {
-      "types": "./dist/convex/convex.config.d.ts",
-      "import": "./dist/convex/convex.config.js",
-      "default": "./dist/convex/convex.config.js"
+      "types": "./dist/component/convex.config.d.ts",
+      "import": "./dist/component/convex.config.js",
+      "default": "./dist/component/convex.config.js"
     },
     "./convex.config": {
-      "types": "./dist/convex/convex.config.d.ts",
-      "import": "./dist/convex/convex.config.js",
-      "default": "./dist/convex/convex.config.js"
+      "types": "./dist/component/convex.config.d.ts",
+      "import": "./dist/component/convex.config.js",
+      "default": "./dist/component/convex.config.js"
     }
   },
-  "types": "./dist/src/index.d.ts",
-  "module": "./dist/src/index.js",
+  "types": "./dist/index.d.ts",
+  "module": "./dist/index.js",
   "publishConfig": {
     "access": "public",
     "tag": "next"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
-    "codegen": "cd ../../apps/example && convex codegen --component-dir ../../packages/convex-eve/convex",
+    "build": "bun run clean && tsc -p tsconfig.build.json",
+    "clean": "node --eval \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "codegen": "cd ../../apps/example && convex codegen --component-dir ../../packages/convex-eve/src/component",
     "build:codegen": "bun run codegen && bun run build",
-    "build:clean": "node --eval \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && bun run build",
     "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
-    "lint": "biome check src convex --files-ignore-unknown=true",
+    "lint": "biome check src --files-ignore-unknown=true",
     "prepare": "bun run build",
-    "prepack": "bun run build:clean",
+    "prepack": "bun run build",
     "prepublishOnly": "node scripts/check-publish-tag.mjs",
     "publish:next": "npm publish --tag next",
     "test": "vitest run",

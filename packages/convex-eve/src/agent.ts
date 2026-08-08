@@ -5,7 +5,7 @@ import type {
   GenericQueryCtx,
   PaginationOptions,
 } from "convex/server";
-import type { ComponentApi } from "../convex/_generated/component.js";
+import type { ComponentApi } from "./component/_generated/component.js";
 
 export interface ThreadSummary {
   _creationTime: number;
