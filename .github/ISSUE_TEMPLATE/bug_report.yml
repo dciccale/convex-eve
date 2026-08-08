@@ -1,0 +1,32 @@
+name: Bug report
+description: Report a reproducible problem in convex-eve
+title: "bug: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Please do not include credentials, signatures, prompts, or private tool data.
+  - type: input
+    id: package-version
+    attributes:
+      label: convex-eve version
+      placeholder: 0.0.1
+    validations:
+      required: true
+  - type: input
+    id: eve-version
+    attributes:
+      label: eve version
+      placeholder: 0.31.0
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Provide the smallest safe reproduction and the expected behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Convex, Bun, runtime, deployment, and browser versions when relevant.

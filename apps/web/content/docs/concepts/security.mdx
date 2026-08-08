@@ -1,0 +1,18 @@
+---
+title: Security boundary
+description: Keep caller identity, bridge credentials, and application tools inside the correct trust boundary.
+icon: ShieldCheck
+---
+
+The component cannot access host `ctx.auth`. Public callers go through host functions that derive trusted scope and subject identifiers server-side.
+
+## Rules
+
+- Browsers never receive bridge credentials.
+- Agent origins are administrator-controlled, not function arguments.
+- Secrets and signatures are not stored in component tables.
+- Tools derive the actor from the authenticated Eve session, not model-provided arguments.
+- Sensitive host mutations re-check authorization before execution.
+- Reasoning and full tool payloads are excluded by default.
+
+The component improves the control boundary; it cannot make an unsafe agent or tool safe by itself.

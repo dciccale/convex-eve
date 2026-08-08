@@ -1,0 +1,29 @@
+name: Feature request
+description: Propose a scoped capability or API improvement
+title: "feat: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What application or agent workflow is currently difficult?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed direction
+      description: Describe the desired behavior without assuming a specific implementation.
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Primary surface
+      options:
+        - Convex component
+        - Eve adapter
+        - Bridge protocol
+        - Example or documentation
+        - Operations and lifecycle
+    validations:
+      required: true

@@ -1,0 +1,14 @@
+node_modules
+.DS_Store
+.turbo
+.next
+.output
+.eve
+.source
+dist
+coverage
+*.tsbuildinfo
+.env
+.env.local
+.env.*.local
+!.env.example

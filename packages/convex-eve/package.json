@@ -1,0 +1,107 @@
+{
+  "name": "convex-eve",
+  "version": "0.1.0-alpha.0",
+  "description": "Convex-native persistence and reactive chat projections for eve agents",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dciccale/convex-eve.git",
+    "directory": "packages/convex-eve"
+  },
+  "homepage": "https://github.com/dciccale/convex-eve#readme",
+  "bugs": {
+    "url": "https://github.com/dciccale/convex-eve/issues"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "sideEffects": false,
+  "keywords": [
+    "convex",
+    "convex-component",
+    "eve",
+    "agents",
+    "chat"
+  ],
+  "files": [
+    "dist",
+    "convex",
+    "src",
+    "!src/**/*.test.*",
+    "LICENSE"
+  ],
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js",
+      "default": "./dist/src/index.js"
+    },
+    "./react": {
+      "types": "./dist/src/react.d.ts",
+      "import": "./dist/src/react.js",
+      "default": "./dist/src/react.js"
+    },
+    "./test": "./src/test.ts",
+    "./_generated/component.js": {
+      "types": "./dist/convex/_generated/component.d.ts"
+    },
+    "./_generated/component": {
+      "types": "./dist/convex/_generated/component.d.ts"
+    },
+    "./convex.config.js": {
+      "types": "./dist/convex/convex.config.d.ts",
+      "import": "./dist/convex/convex.config.js",
+      "default": "./dist/convex/convex.config.js"
+    },
+    "./convex.config": {
+      "types": "./dist/convex/convex.config.d.ts",
+      "import": "./dist/convex/convex.config.js",
+      "default": "./dist/convex/convex.config.js"
+    }
+  },
+  "types": "./dist/src/index.d.ts",
+  "module": "./dist/src/index.js",
+  "publishConfig": {
+    "access": "public",
+    "tag": "next"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "codegen": "cd ../../apps/example && convex codegen --component-dir ../../packages/convex-eve/convex",
+    "build:codegen": "bun run codegen && bun run build",
+    "build:clean": "node --eval \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && bun run build",
+    "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
+    "lint": "biome check src convex --files-ignore-unknown=true",
+    "prepare": "bun run build",
+    "prepack": "bun run build:clean",
+    "prepublishOnly": "node scripts/check-publish-tag.mjs",
+    "publish:next": "npm publish --tag next",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "convex-helpers": "0.1.122"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.7",
+    "convex": "1.43.0",
+    "convex-test": "0.0.49",
+    "eve": "0.31.3",
+    "react": "19.2.8",
+    "typescript": "7.0.2",
+    "vite": "8.2.0",
+    "vitest": "4.1.10"
+  },
+  "peerDependencies": {
+    "convex": ">=1.43.0",
+    "eve": ">=0.31.0",
+    "react": "^18.0.0 || ^19.0.0"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
+  }
+}

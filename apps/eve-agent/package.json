@@ -1,0 +1,26 @@
+{
+  "name": "@convex-eve/performance-coach",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "eve build",
+    "deploy": "eve deploy",
+    "dev": "eve dev --port 2000",
+    "link": "eve link",
+    "lint": "biome check agent --files-ignore-unknown=true",
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "eve": "0.31.3",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.7",
+    "@types/node": "26.2.0",
+    "microsandbox": "0.6.8",
+    "typescript": "7.0.2",
+    "vitest": "4.1.10"
+  }
+}

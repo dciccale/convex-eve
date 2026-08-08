@@ -1,0 +1,74 @@
+---
+title: Threads and Eve sessions
+description: Separate stable application conversations from Eve execution identities.
+icon: MessagesSquare
+---
+
+An application thread is the stable product-facing conversation. An Eve session is the durable execution identity underneath a run.
+
+```text
+Application thread
+└── root Eve session
+    ├── turns and steps
+    ├── tool calls and input requests
+    └── child Eve sessions created by specialist subagents
+```
+
+The public component API should use thread-oriented language where callers manage an ongoing application conversation. Internal bridge and reconciliation APIs retain precise Eve session identifiers.
+
+A reset retires the exact Eve session. It must never silently send work to an unintended replacement session.
+
+## Deletion
+
+Thread deletion is coordinated by the host because the host owns the Eve URL
+and credentials. For a bound thread, it should cancel any active turn, clear
+the durable model-message history, and reset the exact Eve session before
+calling `agent.deleteThread(...)`. That final component call cascade-deletes
+the Convex messages, deliveries, generations, event coordinates, and thread.
+
+Eve 0.31 has no literal session-delete operation. This `cancel → clear → reset`
+sequence is its native equivalent: execution stops, model history is removed,
+and the session ID is terminally retired. If an Eve control fails, the host
+must keep the Convex thread so the operation can be retried safely.
+
+## Application API
+
+The installed server client supplies the namespace, so its operations use
+concise thread-oriented names:
+
+```ts
+export const eve = new ConvexEve(components.eve);
+
+await eve.createThread(ctx, input);
+await eve.sendMessage(ctx, input);
+await eve.listMessages(ctx, input);
+```
+
+Applications do not also install `@convex-dev/agent` to manage these threads.
+`convex-eve` owns the application-facing history and realtime projections; Eve
+owns the agent execution and canonical session event stream.
+
+## React API
+
+React helpers live under `convex-eve/react`. Because the import path already
+provides context, hooks describe the operation without repeating the product
+name:
+
+```tsx
+import { useSendMessage, useUIMessages } from "convex-eve/react";
+
+const { results, status, loadMore } = useUIMessages(
+  api.chat.listMessages,
+  { threadId },
+  { initialNumItems: 20 },
+);
+```
+
+Canonical application-domain types are simply `Thread`, `Message`, and
+`MessagePart`. The package import already provides the namespace, and consumers
+can alias an import when their application has a collision. Prefixes are
+reserved for genuinely source-specific types such as `EveSessionEvent` or
+protocol types such as `BridgeCommandV1`.
+
+The persisted model remains independent from the AI SDK; optional conversion
+adapters can be provided from `convex-eve/ai`.

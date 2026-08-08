@@ -1,0 +1,17 @@
+---
+title: Connect tools to host data
+description: Let Eve tools access application data without trusting model-selected identities.
+icon: Wrench
+---
+
+Application tools execute in the Eve runtime but must preserve the host authorization boundary.
+
+1. The host saves a message with trusted scope and subject identifiers.
+2. The host sends only bounded, non-authoritative context to the Eve session.
+3. A tool derives its authority from verified Eve session context, never model input.
+4. The tool sends an authenticated, narrowly scoped request to a host HTTP action.
+5. The host re-verifies the invocation and calls an internal Convex function.
+
+Never accept `userId`, `scopeId`, or equivalent authority from model tool input.
+
+The example currently uses deterministic fixtures and authenticates the Convex-to-Eve transport as one service principal. End-user identity forwarding and a supported host-tool client are planned before production application tools are enabled.

@@ -1,0 +1,49 @@
+---
+title: Installation
+description: Install the component in a Convex application and prepare an Eve deployment.
+icon: PackagePlus
+---
+
+<Callout type="warn">
+  The npm package has not been published. Use the workspace package while developing this repository.
+</Callout>
+
+## Convex host
+
+Install the component and mount it under the concise `eve` name:
+
+```ts title="convex/convex.config.ts"
+import eve from "convex-eve/convex.config.js";
+import { defineApp } from "convex/server";
+
+const app = defineApp();
+app.use(eve, { name: "eve" });
+
+export default app;
+```
+
+Host functions authenticate callers before invoking `components.eve`. Browsers must never choose trusted scope or subject identifiers.
+
+Bind an authored Eve agent to the component without duplicating its model or capabilities:
+
+```ts title="convex/chat.ts"
+import { Agent } from "convex-eve";
+import { components } from "./_generated/api";
+
+export const coach = new Agent(components.eve, {
+  agentId: "performance-coach",
+});
+```
+
+## Eve service
+
+Author the agent as an ordinary Eve project. Keep Eve's native channel and add a host-only authentication policy:
+
+```ts title="agent/channels/eve.ts"
+import { eveChannel } from "eve/channels/eve";
+import { localDev } from "eve/channels/auth";
+
+export default eveChannel({ auth: [myConvexServiceAuth, localDev()] });
+```
+
+Set `EVE_AGENT_URL` and the corresponding service credential on the Convex deployment. Credentials remain in host actions; component tables never receive them.

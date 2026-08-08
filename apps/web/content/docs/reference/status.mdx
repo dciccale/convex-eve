@@ -1,0 +1,30 @@
+---
+title: Implementation status
+description: What works today and what remains before the first production release.
+icon: ListChecks
+---
+
+## Available now
+
+- Bun and Turborepo monorepo
+- Convex component installation
+- Scope- and subject-bound application threads
+- Pending user messages saved before Eve delivery
+- Fixed thread-to-Eve-session bindings
+- Exact stream-index ingestion and coordinate deduplication
+- Eve-native `EveMessage` and reducer semantics
+- Sanitized message parts without reasoning or full tool payloads
+- Paginated `useUIMessages` React hook
+- Native Eve performance coach project
+- Marketing, documentation, and example applications
+
+## Next milestone
+
+- Bridge-level create/send idempotency
+- Workpool-backed dispatch and retry bounds
+- Finite cursor catch-up and snapshot rebuilds
+- Retention, deletion, reset, clear, compact, and cancel APIs
+- End-user identity propagation for host-backed tools
+- Broader component integration and failure-injection tests
+
+Do not use the current package as a production integration.

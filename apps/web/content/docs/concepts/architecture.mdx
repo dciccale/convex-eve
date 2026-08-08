@@ -1,0 +1,38 @@
+---
+title: Architecture
+description: The boundary between the host application, Convex chat projection, and Eve runtime.
+icon: Workflow
+---
+
+```text
+Application clients
+        │
+        ▼
+Host Convex functions ─ authentication, authorization, product policy
+        │
+        ▼
+convex-eve component ─ threads, pending messages, EveMessage projections
+        │
+        ▼
+Eve session API ─ fixed session ID and ordered event stream
+        │
+        ▼
+Eve harness ─ model loop, skills, tools, subagents, sandbox, workflow
+```
+
+## Sources of truth
+
+Eve is authoritative for agent execution, model history, authored state, and its ordered session event stream. Convex is authoritative for application scope, its thread catalogue, pending delivery state, and the application-facing materialized view. The host remains authoritative for users, permissions, product data, and business policy.
+
+The bridge never turns the Convex mirror into an alternate Eve workflow journal.
+
+## Delivery model
+
+- The host saves the application thread and pending user message before calling Eve.
+- A host action creates or attaches to one fixed Eve session.
+- Eve's `defaultMessageReducer` supplies canonical message and part semantics.
+- Events are reconciled from the exact `(eveSessionId, streamIndex)` cursor.
+- Projection writes and cursor advancement commit together.
+- Only safe message projections and a bounded coordinate ledger are persisted; raw events are not retained by default.
+
+The initial implementation does not yet provide bridge-level idempotency for an ambiguous external session-create or message-send response. Production retries and reconciliation remain a release blocker.

@@ -1,0 +1,33 @@
+---
+title: Introduction
+description: Persist reactive, application-facing chats for agents powered by Eve.
+icon: BookOpen
+---
+
+`convex-eve` is an open-source Convex component for database-backed Eve chats. Eve owns the durable agent session and execution stream; Convex owns the authenticated thread catalogue, pending delivery state, pagination, and reactive `EveMessage` projection.
+
+<Callout type="warn" title="Early development">
+  The repository is establishing its public contracts. Eve-native dispatch and projection are runnable; idempotency, reconciliation, and retention controls still need production hardening.
+</Callout>
+
+## Why it exists
+
+Eve is a filesystem-first agent framework with instructions, tools, skills, subagents, sandboxes, schedules, durable sessions, and rich event streams. Convex provides transactions, application data, scheduled work, reactive queries, and typed backend APIs.
+
+Eve already supplies `ClientSessionState`, `MessageStreamEvent`, `EveMessage`, and its default event reducer. `convex-eve` persists those semantics rather than defining a competing chat protocol.
+
+<Cards>
+  <Card title="Architecture" description="Understand the system boundaries and sources of truth." href="/docs/concepts/architecture" />
+  <Card title="Native Eve agent" description="See where agent configuration, skills, tools, and specialists live." href="/docs/guides/eve-agent" />
+  <Card title="Example application" description="Run the performance coach and inspect its control-plane state." href="/docs/getting-started/example" />
+</Cards>
+
+## Core responsibilities
+
+| Surface | Owns |
+| --- | --- |
+| Host application | Authentication, authorization, tenancy, product data, and tool policy |
+| `convex-eve` | Threads, pending delivery, stream coordinates, sanitized Eve message projections, and reactive pagination |
+| Eve | Agent definitions, model loops, skills, tools, subagents, sandbox, and durable execution |
+
+The component is independent from `@convex-dev/agent`. It borrows familiar storage and React ergonomics where useful, but Eve—not Convex or the AI SDK—owns execution.

@@ -1,0 +1,41 @@
+---
+title: Run the example
+description: Start the marketing site, Convex host, and performance coach Eve harness.
+icon: Play
+---
+
+From the repository root:
+
+```bash
+bun install
+```
+
+Portless assigns free backing ports and exposes stable local URLs:
+
+| Service | URL |
+| --- | --- |
+| Marketing and documentation | `https://convex-eve.localhost` |
+| Performance coach example | `https://convex-eve-example.localhost` |
+| Eve development service | `http://localhost:2000` |
+
+The example app is linked to the `convex-eve` Convex project through its ignored `apps/example/.env.local` file.
+
+To configure another machine:
+
+```bash
+cd apps/example
+bunx convex dev --configure existing
+```
+
+The Convex action must be able to reach the Eve service, so deploy the agent or expose its development server through a public development URL. Then configure the Convex deployment:
+
+```bash
+bunx convex env set EVE_AGENT_URL https://your-eve-agent.vercel.app
+bunx convex env set EVE_AGENT_TOKEN replace-with-a-long-random-value
+```
+
+Set the same token on the Eve deployment. Run `bun run dev:convex`, `bun run dev:example`, and `bun run dev:web` in separate terminals. `bun run dev:eve` is useful when its URL is reachable by the Convex deployment.
+
+The authored coach defaults to `openai/gpt-5.6-luna` with high reasoning. Luna
+requires paid Vercel AI Gateway credits. Override `EVE_MODEL` in the Eve
+deployment when using another supported gateway model.

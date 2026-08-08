@@ -1,0 +1,44 @@
+---
+title: Author the Eve agent
+description: Keep the performance coach configuration in Eve's native filesystem layout.
+icon: Bot
+---
+
+The example is a single root performance coach with three declared specialists:
+
+```text
+apps/eve-agent/agent/
+├── agent.ts
+├── instructions.md
+├── tools/
+│   ├── get_user_profile.ts
+│   ├── list_workouts.ts
+│   ├── list_recovery_checkins.ts
+│   └── propose_training_plan.ts
+└── subagents/
+    ├── training/
+    │   └── skills/training-planning/SKILL.md
+    ├── nutrition/
+    │   └── skills/nutrition-planning/SKILL.md
+    └── recovery/
+        └── skills/recovery-assessment/SKILL.md
+```
+
+Eve discovers capability identities from their paths. The component does not duplicate prompts, skills, tool definitions, or model history in Convex. It stores only the application thread/session binding and a sanitized projection of Eve's native message parts.
+
+## Subagents and skills
+
+The two mechanisms solve different problems. A subagent is a separate worker
+with its own context, instructions, tools, and execution. A skill is an
+on-demand procedure that teaches that worker how to perform a substantial kind
+of task consistently.
+
+The root coach answers simple factual questions with its tools and delegates
+only when a request needs domain interpretation or planning. Each specialist
+then loads its own skill for the deeper procedure. Keeping the skills under the
+specialists avoids making the root load a domain playbook and then ask a second
+agent to repeat the same analysis.
+
+## Approval-gated action
+
+The demo&apos;s `propose_training_plan` tool uses Eve&apos;s `always()` approval policy. Eve pauses the durable run, while `convex-eve` projects the request into the host application and sends the authorized answer back to the exact waiting request.

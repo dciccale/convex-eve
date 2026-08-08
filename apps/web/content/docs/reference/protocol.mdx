@@ -1,0 +1,21 @@
+---
+title: Bridge protocol
+description: Versioning and ordering rules for communication between Convex and Eve.
+icon: Waypoints
+---
+
+The persisted wire boundary is versioned independently from the npm package and Eve version:
+
+```ts
+export const BRIDGE_PROTOCOL = "convex-eve/1";
+```
+
+Every command carries a component command ID, control-session identity, logical agent key, actor snapshot, and command kind. Retries reuse the same command ID.
+
+Event order is always:
+
+```text
+(eveSessionId, streamIndex)
+```
+
+Event IDs are secondary diagnostic identifiers and must never be used as stream cursors.
