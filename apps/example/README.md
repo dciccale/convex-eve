@@ -5,11 +5,6 @@ Convex owns the application thread list, pending sends, reactive pagination, and
 sanitized `EveMessage` projection. The native agent in `../eve-agent` owns the
 durable session, model loop, skills, tools, and specialist subagents.
 
-The reviewer-facing deployment is available at
-[example-kohl-phi.vercel.app](https://example-kohl-phi.vercel.app). For local or
-production adoption, configure your own Convex and Eve deployments as described
-below.
-
 Deleting a conversation is coordinated end to end. The host action uses Eve's
 native session controls to cancel an active turn, clear durable model-message
 history, and terminally reset the session. Only after those controls succeed
