@@ -1,5 +1,9 @@
 # convex-eve
 
+[![CI](https://github.com/dciccale/convex-eve/actions/workflows/ci.yml/badge.svg)](https://github.com/dciccale/convex-eve/actions/workflows/ci.yml)
+[![npm next](https://img.shields.io/npm/v/convex-eve/next?label=npm%20next)](https://www.npmjs.com/package/convex-eve/v/next)
+[![License](https://img.shields.io/github/license/dciccale/convex-eve)](LICENSE)
+
 An experimental open-source Convex Agent component backed by
 [eve](https://github.com/vercel/eve) agent harnesses.
 
