@@ -77,6 +77,27 @@ export const markDispatching = mutation({
     if (!canClaimDelivery(delivery.state)) {
       return { claimed: false, deliveryId: delivery._id };
     }
+    const dispatching = await ctx.db
+      .query("deliveries")
+      .withIndex("by_generation_state_created", (q) =>
+        q.eq("generationId", delivery.generationId).eq("state", "dispatching"),
+      )
+      .first();
+    const streaming = await ctx.db
+      .query("deliveries")
+      .withIndex("by_generation_state_created", (q) =>
+        q.eq("generationId", delivery.generationId).eq("state", "streaming"),
+      )
+      .first();
+    const unknown = await ctx.db
+      .query("deliveries")
+      .withIndex("by_generation_state_created", (q) =>
+        q.eq("generationId", delivery.generationId).eq("state", "unknown"),
+      )
+      .first();
+    if (dispatching || streaming || unknown) {
+      return { claimed: false, deliveryId: delivery._id };
+    }
     const now = Date.now();
     await ctx.db.patch(delivery._id, {
       attemptCount: delivery.attemptCount + 1,
@@ -86,6 +107,35 @@ export const markDispatching = mutation({
     });
     await ctx.db.patch(thread._id, { status: "streaming", updatedAt: now });
     return { claimed: true, deliveryId: delivery._id };
+  },
+});
+
+export const getNextQueuedDelivery = query({
+  args: {
+    ...actorArgs,
+    threadId: v.id("threads"),
+  },
+  returns: v.union(v.null(), v.object({ clientMessageId: v.string() })),
+  handler: async (ctx, args) => {
+    const thread = await requireThread(ctx, args.threadId, args);
+    const generation = await currentGeneration(ctx, thread);
+    for (const state of ["dispatching", "streaming", "unknown"] as const) {
+      const blocked = await ctx.db
+        .query("deliveries")
+        .withIndex("by_generation_state_created", (q) =>
+          q.eq("generationId", generation._id).eq("state", state),
+        )
+        .first();
+      if (blocked) return null;
+    }
+    const delivery = await ctx.db
+      .query("deliveries")
+      .withIndex("by_generation_state_created", (q) =>
+        q.eq("generationId", generation._id).eq("state", "queued"),
+      )
+      .order("asc")
+      .first();
+    return delivery ? { clientMessageId: delivery.clientMessageId } : null;
   },
 });
 
@@ -265,6 +315,9 @@ export const failDelivery = mutation({
       )
       .unique();
     if (!delivery) throw new ConvexError("delivery_not_found");
+    if (delivery.state !== "dispatching") {
+      throw new ConvexError("delivery_transition_invalid");
+    }
     const now = Date.now();
     await ctx.db.patch(delivery._id, {
       error: safeError(args.error),
@@ -275,6 +328,49 @@ export const failDelivery = mutation({
       status: "failed",
       updatedAt: now,
     });
+    await ctx.db.patch(thread._id, { status: "failed", updatedAt: now });
+    return null;
+  },
+});
+
+export const markDeliveryUnknown = mutation({
+  args: {
+    ...actorArgs,
+    threadId: v.id("threads"),
+    clientMessageId: v.string(),
+    error: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const thread = await requireThread(ctx, args.threadId, args);
+    const delivery = await ctx.db
+      .query("deliveries")
+      .withIndex("by_thread_client_message", (q) =>
+        q
+          .eq("threadId", thread._id)
+          .eq("clientMessageId", args.clientMessageId),
+      )
+      .unique();
+    if (!delivery) throw new ConvexError("delivery_not_found");
+    if (
+      delivery.state !== "accepted" &&
+      delivery.state !== "dispatching" &&
+      delivery.state !== "streaming"
+    ) {
+      throw new ConvexError("delivery_transition_invalid");
+    }
+    const now = Date.now();
+    await ctx.db.patch(delivery._id, {
+      error: safeError(args.error),
+      state: "unknown",
+      updatedAt: now,
+    });
+    if (delivery.state !== "accepted") {
+      await ctx.db.patch(delivery.messageId, {
+        status: "failed",
+        updatedAt: now,
+      });
+    }
     await ctx.db.patch(thread._id, { status: "failed", updatedAt: now });
     return null;
   },

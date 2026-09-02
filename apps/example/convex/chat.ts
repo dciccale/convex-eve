@@ -1,7 +1,17 @@
 import { paginationOptsValidator } from "convex/server";
 import { ConvexError, v } from "convex/values";
 import { Agent } from "convex-eve";
-import { Client, type InputResponse } from "eve/client";
+import {
+  Client,
+  isCurrentTurnBoundaryEvent,
+  type MessageStreamEvent,
+  parseInputResponses,
+} from "eve/client";
+import { createEveSessionOnce } from "../lib/create-eve-session";
+import {
+  classifyDeliveryFailure,
+  type DispatchPhase,
+} from "../lib/delivery-failure";
 import { retireEveSession } from "../lib/retire-eve-session";
 import { components, internal } from "./_generated/api";
 import type { ActionCtx } from "./_generated/server";
@@ -109,7 +119,10 @@ export const dispatchMessage = internalAction({
       ...actor,
       ...args,
     });
-    if (input.delivery.state === "accepted") return;
+    if (input.delivery.state === "accepted") {
+      await scheduleNextMessage(ctx, args.threadId);
+      return;
+    }
     const claim = await ctx.runMutation(
       components.eve.runtime.markDispatching,
       {
@@ -119,13 +132,18 @@ export const dispatchMessage = internalAction({
     );
     if (!claim.claimed) return;
 
+    let phase: DispatchPhase = "preflight";
     try {
       const client = eveClient();
       if (input.generation.eveSessionId) {
         const session = client.sessions.attach(input.generation.eveSessionId, {
           streamIndex: input.generation.nextStreamIndex,
         });
-        const response = await session.send(input.message);
+        phase = "request";
+        const response = await session.send(input.message, {
+          turnPolicy: "queue",
+        });
+        phase = "accepted";
         await persistResponse(
           ctx,
           args.threadId,
@@ -134,8 +152,16 @@ export const dispatchMessage = internalAction({
           response,
         );
       } else {
-        const { response, session } = await client.sessions.create({
+        phase = "request";
+        const created = await createEveSessionOnce({
+          host: eveHost(),
           message: input.message,
+          operationId: `convex-eve:${input.delivery._id}`,
+          token: process.env.EVE_AGENT_TOKEN,
+        });
+        phase = "accepted";
+        const session = client.sessions.attach(created.sessionId, {
+          streamIndex: 0,
         });
         await ctx.runMutation(components.eve.runtime.bindSession, {
           ...actor,
@@ -147,11 +173,16 @@ export const dispatchMessage = internalAction({
           args.threadId,
           session.state.sessionId,
           0,
-          response,
+          currentTurn(session.stream({ startIndex: 0 })),
         );
       }
+      await scheduleNextMessage(ctx, args.threadId);
     } catch (error) {
-      await ctx.runMutation(components.eve.runtime.failDelivery, {
+      const mutation =
+        classifyDeliveryFailure(phase, error) === "failed"
+          ? components.eve.runtime.failDelivery
+          : components.eve.runtime.markDeliveryUnknown;
+      await ctx.runMutation(mutation, {
         ...actor,
         clientMessageId: args.clientMessageId,
         error: error instanceof Error ? error.message : String(error),
@@ -182,7 +213,7 @@ export const dispatchResponse = internalAction({
     const session = eveClient().sessions.attach(sessionId, {
       streamIndex: thread.generation.nextStreamIndex,
     });
-    const response = await session.respond(args.responses as InputResponse[]);
+    const response = await session.respond(parseInputResponses(args.responses));
     await persistResponse(
       ctx,
       args.threadId,
@@ -194,8 +225,7 @@ export const dispatchResponse = internalAction({
 });
 
 function eveClient() {
-  const host = process.env.EVE_AGENT_URL;
-  if (!host) throw new ConvexError("EVE_AGENT_URL is not configured");
+  const host = eveHost();
   const token = process.env.EVE_AGENT_TOKEN;
   return new Client({
     host,
@@ -204,12 +234,41 @@ function eveClient() {
   });
 }
 
+function eveHost() {
+  const host = process.env.EVE_AGENT_URL;
+  if (!host) throw new ConvexError("EVE_AGENT_URL is not configured");
+  return host;
+}
+
+async function scheduleNextMessage(ctx: ActionCtx, threadId: string) {
+  const next = await ctx.runQuery(
+    components.eve.runtime.getNextQueuedDelivery,
+    {
+      ...actor,
+      threadId,
+    },
+  );
+  if (next) {
+    await ctx.scheduler.runAfter(0, internal.chat.dispatchMessage, {
+      clientMessageId: next.clientMessageId,
+      threadId,
+    });
+  }
+}
+
+async function* currentTurn(events: AsyncIterable<MessageStreamEvent>) {
+  for await (const event of events) {
+    yield event;
+    if (isCurrentTurnBoundaryEvent(event)) return;
+  }
+}
+
 async function persistResponse(
   ctx: ActionCtx,
   threadId: string,
   eveSessionId: string,
   startIndex: number,
-  response: AsyncIterable<unknown>,
+  response: AsyncIterable<MessageStreamEvent>,
 ) {
   let streamIndex = startIndex;
   for await (const event of response) {

@@ -26,7 +26,7 @@ the durable model-message history, and reset the exact Eve session before
 calling `agent.deleteThread(...)`. That final component call cascade-deletes
 the Convex messages, deliveries, generations, event coordinates, and thread.
 
-Eve 0.31 has no literal session-delete operation. This `cancel → clear → reset`
+Eve 0.48 has no literal session-delete operation. This `cancel → clear → reset`
 sequence is its native equivalent: execution stops, model history is removed,
 and the session ID is terminally retired. If an Eve control fails, the host
 must keep the Convex thread so the operation can be retried safely.

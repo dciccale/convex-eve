@@ -123,7 +123,12 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             generationId: string;
             messageId: string;
             state:
-              "queued" | "dispatching" | "streaming" | "accepted" | "failed";
+              | "queued"
+              | "dispatching"
+              | "streaming"
+              | "accepted"
+              | "failed"
+              | "unknown";
             threadId: string;
             updatedAt: number;
           };
@@ -161,6 +166,13 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         },
         Name
       >;
+      getNextQueuedDelivery: FunctionReference<
+        "query",
+        "internal",
+        { scopeId: string; subjectId: string; threadId: string },
+        null | { clientMessageId: string },
+        Name
+      >;
       ingestEvent: FunctionReference<
         "mutation",
         "internal",
@@ -173,6 +185,19 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           threadId: string;
         },
         { duplicate: boolean },
+        Name
+      >;
+      markDeliveryUnknown: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          clientMessageId: string;
+          error: string;
+          scopeId: string;
+          subjectId: string;
+          threadId: string;
+        },
+        null,
         Name
       >;
       markDispatching: FunctionReference<

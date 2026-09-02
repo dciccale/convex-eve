@@ -17,7 +17,7 @@ sanitized message projections, and React pagination helpers.
 npm install convex-eve@next convex eve
 ```
 
-`convex` 1.43 or newer and `eve` 0.31 or newer are peer dependencies. Install
+`convex` 1.43 or newer and Eve 0.48 are peer dependencies. Install
 React 18 or 19 when using the optional `convex-eve/react` entry point.
 
 ## Mount the component

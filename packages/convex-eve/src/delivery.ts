@@ -3,7 +3,8 @@ export type DeliveryState =
   | "dispatching"
   | "failed"
   | "queued"
-  | "streaming";
+  | "streaming"
+  | "unknown";
 
 /** Only queued and explicitly failed deliveries may acquire a dispatch claim. */
 export function canClaimDelivery(state: DeliveryState): boolean {

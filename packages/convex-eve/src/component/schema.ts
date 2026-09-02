@@ -83,6 +83,7 @@ export const schema = defineSchema({
       v.literal("streaming"),
       v.literal("accepted"),
       v.literal("failed"),
+      v.literal("unknown"),
     ),
     attemptCount: v.number(),
     error: v.optional(v.string()),

@@ -1,6 +1,6 @@
 {
   "name": "convex-eve",
-  "version": "0.1.0-alpha.1",
+  "version": "0.1.0-alpha.2",
   "description": "Convex-native persistence and reactive chat projections for eve agents",
   "license": "Apache-2.0",
   "repository": {
@@ -28,7 +28,8 @@
     "dist",
     "src",
     "!src/**/*.test.*",
-    "LICENSE"
+    "LICENSE",
+    "CHANGELOG.md"
   ],
   "exports": {
     "./package.json": "./package.json",
@@ -87,7 +88,7 @@
     "@biomejs/biome": "2.5.7",
     "convex": "1.43.0",
     "convex-test": "0.0.49",
-    "eve": "0.31.3",
+    "eve": "0.48.0",
     "react": "19.2.8",
     "typescript": "7.0.2",
     "vite": "8.2.0",
@@ -95,7 +96,7 @@
   },
   "peerDependencies": {
     "convex": ">=1.43.0",
-    "eve": ">=0.31.0",
+    "eve": ">=0.48.0 <0.49.0",
     "react": "^18.0.0 || ^19.0.0"
   },
   "peerDependenciesMeta": {

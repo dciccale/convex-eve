@@ -45,3 +45,69 @@ test("published test helper registers the component", () => {
   const t = convexTest(schema, modules);
   expect(() => register(t, "nestedEve")).not.toThrow();
 });
+
+test("one generation claims one delivery and does not retry unknown outcomes", async () => {
+  const t = convexTest(schema, modules);
+  const actor = { scopeId: "workspace-a", subjectId: "user-a" };
+  const threadId = await t.mutation(api.threads.create, {
+    ...actor,
+    agentId: "coach",
+  });
+  for (const clientMessageId of ["message-1", "message-2"]) {
+    await t.mutation(api.messages.createPending, {
+      ...actor,
+      agentId: "coach",
+      clientMessageId,
+      message: clientMessageId,
+      threadId,
+    });
+  }
+
+  await expect(
+    t.mutation(api.runtime.markDispatching, {
+      ...actor,
+      clientMessageId: "message-1",
+      threadId,
+    }),
+  ).resolves.toMatchObject({ claimed: true });
+  await expect(
+    t.mutation(api.runtime.markDispatching, {
+      ...actor,
+      clientMessageId: "message-2",
+      threadId,
+    }),
+  ).resolves.toMatchObject({ claimed: false });
+  await expect(
+    t.query(api.runtime.getNextQueuedDelivery, { ...actor, threadId }),
+  ).resolves.toBeNull();
+
+  await t.mutation(api.runtime.markDeliveryUnknown, {
+    ...actor,
+    clientMessageId: "message-1",
+    error: "response lost after dispatch",
+    threadId,
+  });
+  const unknown = await t.query(api.runtime.getDelivery, {
+    ...actor,
+    clientMessageId: "message-1",
+    threadId,
+  });
+  expect(unknown.delivery.state).toBe("unknown");
+  await expect(
+    t.mutation(api.runtime.markDispatching, {
+      ...actor,
+      clientMessageId: "message-1",
+      threadId,
+    }),
+  ).resolves.toMatchObject({ claimed: false });
+  await expect(
+    t.mutation(api.runtime.markDispatching, {
+      ...actor,
+      clientMessageId: "message-2",
+      threadId,
+    }),
+  ).resolves.toMatchObject({ claimed: false });
+  await expect(
+    t.query(api.runtime.getNextQueuedDelivery, { ...actor, threadId }),
+  ).resolves.toBeNull();
+});

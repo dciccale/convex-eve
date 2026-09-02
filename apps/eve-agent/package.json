@@ -13,7 +13,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "eve": "0.31.3",
+    "eve": "0.48.0",
     "zod": "4.4.3"
   },
   "devDependencies": {

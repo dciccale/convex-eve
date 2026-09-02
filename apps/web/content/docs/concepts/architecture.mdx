@@ -30,9 +30,13 @@ The bridge never turns the Convex mirror into an alternate Eve workflow journal.
 
 - The host saves the application thread and pending user message before calling Eve.
 - A host action creates or attaches to one fixed Eve session.
+- Eve create-once operation IDs make new-session retries idempotent.
+- One delivery can dispatch per session generation at a time.
 - Eve's `defaultMessageReducer` supplies canonical message and part semantics.
 - Events are reconciled from the exact `(eveSessionId, streamIndex)` cursor.
 - Projection writes and cursor advancement commit together.
 - Only safe message projections and a bounded coordinate ledger are persisted; raw events are not retained by default.
 
-The initial implementation does not yet provide bridge-level idempotency for an ambiguous external session-create or message-send response. Production retries and reconciliation remain a release blocker.
+An ambiguous follow-up send or input response enters the `unknown` state. This
+state blocks later delivery until reconciliation proves the exact Eve cursor.
+Automatic reconciliation and bounded worker recovery remain release blockers.

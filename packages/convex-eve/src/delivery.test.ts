@@ -9,7 +9,12 @@ describe("delivery dispatch claims", () => {
     },
   );
 
-  it.each(["dispatching", "streaming", "accepted"] satisfies DeliveryState[])(
+  it.each([
+    "dispatching",
+    "streaming",
+    "accepted",
+    "unknown",
+  ] satisfies DeliveryState[])(
     "rejects a second claim for %s deliveries",
     (state) => {
       expect(canClaimDelivery(state)).toBe(false);

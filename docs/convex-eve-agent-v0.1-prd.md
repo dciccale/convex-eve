@@ -673,7 +673,7 @@ parts without changing the public `EveMessage` shape.
 - `generationId`
 - `messageId`
 - `clientMessageId`
-- state: `queued | dispatching | streaming | accepted | failed`
+- state: `queued | dispatching | streaming | accepted | failed | unknown`
 - bounded attempt metadata
 - timestamps
 
@@ -873,7 +873,7 @@ inside the monorepo.
 - Bind a thread generation to an exact Eve session.
 - Persist user messages before delivery.
 - Dispatch through Workpool with bounded retries.
-- Add bridge-level message and session-create idempotency.
+- Use Eve create-once operation IDs and reconcile ambiguous follow-up delivery.
 - Support `session.send`, input response, cancel, compact, clear, and reset.
 
 ### Milestone 3: event projection and streaming
@@ -998,8 +998,8 @@ Version 0.1 is ready only when:
 3. Should `sendMessage` be callable from a mutation through capture-and-schedule
    client code, or should the public client expose separate `saveMessage` and
    `dispatchMessage` operations?
-4. What public Eve channel extension point provides bridge-level idempotency
-   without depending on internals?
+4. What public Eve mechanism can identify repeated follow-up sends and input
+   responses? Eve 0.48 provides `operationId` for session creation only.
 5. How should dynamic per-turn application context be passed to Eve without
    turning it into an alternate system prompt?
 6. Should tool input and output parts be opt-in globally, per agent, or per
