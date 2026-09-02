@@ -873,7 +873,9 @@ inside the monorepo.
 - Bind a thread generation to an exact Eve session.
 - Persist user messages before delivery.
 - Dispatch through Workpool with bounded retries.
-- Use Eve create-once operation IDs and reconcile ambiguous follow-up delivery.
+- Use Eve create-once operation IDs and finite cursor catch-up to reconcile
+  ambiguous follow-up delivery.
+- Add Workpool leases and explicit retry limits to the reconciliation worker.
 - Support `session.send`, input response, cancel, compact, clear, and reset.
 
 ### Milestone 3: event projection and streaming

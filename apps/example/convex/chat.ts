@@ -144,6 +144,11 @@ export const dispatchMessage = internalAction({
           turnPolicy: "queue",
         });
         phase = "accepted";
+        await ctx.runMutation(components.eve.runtime.markStreaming, {
+          ...actor,
+          ...args,
+        });
+        await scheduleReconciliation(ctx, args, 0, 30_000);
         await persistResponse(
           ctx,
           args.threadId,
@@ -168,6 +173,11 @@ export const dispatchMessage = internalAction({
           eveSessionId: session.state.sessionId,
           threadId: args.threadId,
         });
+        await ctx.runMutation(components.eve.runtime.markStreaming, {
+          ...actor,
+          ...args,
+        });
+        await scheduleReconciliation(ctx, args, 0, 30_000);
         await persistResponse(
           ctx,
           args.threadId,
@@ -178,17 +188,98 @@ export const dispatchMessage = internalAction({
       }
       await scheduleNextMessage(ctx, args.threadId);
     } catch (error) {
-      const mutation =
-        classifyDeliveryFailure(phase, error) === "failed"
-          ? components.eve.runtime.failDelivery
-          : components.eve.runtime.markDeliveryUnknown;
-      await ctx.runMutation(mutation, {
+      if (classifyDeliveryFailure(phase, error) === "failed") {
+        await ctx.runMutation(components.eve.runtime.failDelivery, {
+          ...actor,
+          ...args,
+          error: errorText(error),
+        });
+        return;
+      }
+      await markForReconciliation(ctx, args, error);
+      await scheduleReconciliation(ctx, args, 0, 1_000);
+    }
+  },
+});
+
+export const reconcileMessage = internalAction({
+  args: {
+    threadId: v.string(),
+    clientMessageId: v.string(),
+    attempt: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const input = await ctx.runQuery(components.eve.runtime.getDelivery, {
+      ...actor,
+      clientMessageId: args.clientMessageId,
+      threadId: args.threadId,
+    });
+    if (input.delivery.state === "accepted") {
+      await scheduleNextMessage(ctx, args.threadId);
+      return;
+    }
+    if (
+      input.delivery.state !== "dispatching" &&
+      input.delivery.state !== "streaming" &&
+      input.delivery.state !== "unknown"
+    ) {
+      return;
+    }
+
+    try {
+      let sessionId = input.generation.eveSessionId;
+      let startIndex = input.generation.nextStreamIndex;
+      if (!sessionId) {
+        const created = await createEveSessionOnce({
+          host: eveHost(),
+          message: input.message,
+          operationId: `convex-eve:${input.delivery._id}`,
+          token: process.env.EVE_AGENT_TOKEN,
+        });
+        sessionId = created.sessionId;
+        startIndex = 0;
+        await ctx.runMutation(components.eve.runtime.bindSession, {
+          ...actor,
+          eveSessionId: sessionId,
+          threadId: args.threadId,
+        });
+        await ctx.runMutation(components.eve.runtime.markStreaming, {
+          ...actor,
+          clientMessageId: args.clientMessageId,
+          threadId: args.threadId,
+        });
+      }
+
+      const session = eveClient().sessions.attach(sessionId, {
+        streamIndex: startIndex,
+      });
+      await persistResponse(
+        ctx,
+        args.threadId,
+        sessionId,
+        startIndex,
+        session.stream({ follow: false, startIndex }),
+      );
+      const refreshed = await ctx.runQuery(components.eve.runtime.getDelivery, {
         ...actor,
         clientMessageId: args.clientMessageId,
-        error: error instanceof Error ? error.message : String(error),
         threadId: args.threadId,
       });
+      if (refreshed.delivery.state === "accepted") {
+        await scheduleNextMessage(ctx, args.threadId);
+        return;
+      }
+    } catch (error) {
+      await markForReconciliation(ctx, args, error);
     }
+
+    const nextAttempt = Math.min(args.attempt + 1, 5);
+    await scheduleReconciliation(
+      ctx,
+      args,
+      nextAttempt,
+      reconciliationDelayMs(nextAttempt),
+    );
   },
 });
 
@@ -254,6 +345,53 @@ async function scheduleNextMessage(ctx: ActionCtx, threadId: string) {
       threadId,
     });
   }
+}
+
+async function markForReconciliation(
+  ctx: ActionCtx,
+  args: { clientMessageId: string; threadId: string },
+  error: unknown,
+) {
+  const current = await ctx.runQuery(components.eve.runtime.getDelivery, {
+    ...actor,
+    ...args,
+  });
+  if (current.delivery.state === "dispatching") {
+    await ctx.runMutation(components.eve.runtime.markDeliveryUnknown, {
+      ...actor,
+      ...args,
+      error: errorText(error),
+    });
+  } else if (
+    current.delivery.state === "streaming" ||
+    current.delivery.state === "unknown"
+  ) {
+    await ctx.runMutation(components.eve.runtime.recordReconciliationError, {
+      ...actor,
+      ...args,
+      error: errorText(error),
+    });
+  }
+}
+
+async function scheduleReconciliation(
+  ctx: ActionCtx,
+  args: { clientMessageId: string; threadId: string },
+  attempt: number,
+  delayMs: number,
+) {
+  await ctx.scheduler.runAfter(delayMs, internal.chat.reconcileMessage, {
+    ...args,
+    attempt,
+  });
+}
+
+function reconciliationDelayMs(attempt: number) {
+  return Math.min(30_000, 1_000 * 2 ** attempt);
+}
+
+function errorText(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
 }
 
 async function* currentTurn(events: AsyncIterable<MessageStreamEvent>) {

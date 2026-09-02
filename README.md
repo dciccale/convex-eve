@@ -16,9 +16,10 @@ realtime projections for application-facing agent experiences.
 
 > [!WARNING]
 > This repository is in early development. The Eve-native persistence path is
-> implemented, but follow-up delivery reconciliation, retention controls, and
-> bounded worker recovery still need production hardening. Install the alpha with
-> `convex-eve@next`; `latest` remains the `0.0.1` name-reservation placeholder.
+> implemented, and the example bridge performs bounded stream reconciliation.
+> Input-response idempotency, retention controls, and durable worker leases still
+> need production hardening. Install the alpha with `convex-eve@next`; `latest`
+> remains the `0.0.1` name-reservation placeholder.
 
 ## Repository
 
@@ -131,6 +132,8 @@ Available now:
 - One active delivery per Eve session generation
 - Eve create-once operation IDs for new sessions in the example bridge
 - Non-retryable `unknown` delivery state for ambiguous external results
+- Bounded Eve stream catch-up with backoff in the example bridge
+- Delivery acceptance only after an Eve session boundary
 - Exact `(eveSessionId, streamIndex)` ingestion and coordinate deduplication
 - Eve `defaultMessageReducer` semantics with bounded persistence sanitization
 - `convex-eve/react` with `useUIMessages`
@@ -138,8 +141,8 @@ Available now:
 
 Next milestone:
 
-- Reconcile ambiguous follow-up sends and input responses
-- Use Workpool for bounded delivery, leases, and catch-up reconciliation
+- Add durable reconciliation leases and retry limits with Workpool
+- Make input-response delivery idempotent and recoverable
 - Add snapshot-based projection rebuilds and retention controls
 - Harden input-response delivery and session controls
 - Expand component state-machine integration tests

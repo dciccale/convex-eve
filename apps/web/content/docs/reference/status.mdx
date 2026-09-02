@@ -13,6 +13,8 @@ icon: ListChecks
 - Serialized delivery claims per Eve session generation
 - Eve create-once operation IDs for new sessions
 - Ambiguous delivery outcomes block retries in the `unknown` state
+- Bounded Eve stream catch-up with exponential backoff in the example bridge
+- Delivery acceptance only after an Eve session boundary
 - Fixed thread-to-Eve-session bindings
 - Exact stream-index ingestion and coordinate deduplication
 - Eve-native `EveMessage` and reducer semantics
@@ -23,9 +25,9 @@ icon: ListChecks
 
 ## Next milestone
 
-- Follow-up send and input-response reconciliation
-- Workpool-backed dispatch leases and retry bounds
-- Finite cursor catch-up and snapshot rebuilds
+- Workpool-backed dispatch and reconciliation leases
+- Input-response idempotency and recovery
+- Snapshot-based projection rebuilds
 - Retention, deletion, reset, clear, compact, and cancel APIs
 - End-user identity propagation for host-backed tools
 - Broader component integration and failure-injection tests

@@ -212,6 +212,31 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         { claimed: boolean; deliveryId: string },
         Name
       >;
+      markStreaming: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          clientMessageId: string;
+          scopeId: string;
+          subjectId: string;
+          threadId: string;
+        },
+        null,
+        Name
+      >;
+      recordReconciliationError: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          clientMessageId: string;
+          error: string;
+          scopeId: string;
+          subjectId: string;
+          threadId: string;
+        },
+        null,
+        Name
+      >;
     };
     threads: {
       create: FunctionReference<

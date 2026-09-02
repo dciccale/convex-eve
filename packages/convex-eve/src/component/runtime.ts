@@ -173,6 +173,38 @@ export const bindSession = mutation({
   },
 });
 
+export const markStreaming = mutation({
+  args: {
+    ...actorArgs,
+    threadId: v.id("threads"),
+    clientMessageId: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const thread = await requireThread(ctx, args.threadId, args);
+    const delivery = await ctx.db
+      .query("deliveries")
+      .withIndex("by_thread_client_message", (q) =>
+        q
+          .eq("threadId", thread._id)
+          .eq("clientMessageId", args.clientMessageId),
+      )
+      .unique();
+    if (!delivery) throw new ConvexError("delivery_not_found");
+    if (delivery.state !== "dispatching" && delivery.state !== "unknown") {
+      throw new ConvexError("delivery_transition_invalid");
+    }
+    const now = Date.now();
+    await ctx.db.patch(delivery._id, {
+      error: undefined,
+      state: "streaming",
+      updatedAt: now,
+    });
+    await ctx.db.patch(thread._id, { status: "streaming", updatedAt: now });
+    return null;
+  },
+});
+
 export const ingestEvent = mutation({
   args: {
     ...actorArgs,
@@ -281,15 +313,33 @@ export const ingestEvent = mutation({
     await ctx.db.patch(thread._id, { status: threadStatus, updatedAt: now });
 
     if (event.type === "message.received") {
-      const pending = await ctx.db
-        .query("deliveries")
-        .withIndex("by_generation_state_created", (q) =>
-          q.eq("generationId", generation._id).eq("state", "dispatching"),
-        )
-        .order("asc")
-        .first();
+      const pending = await activeDelivery(ctx, generation._id, [
+        "streaming",
+        "dispatching",
+        "unknown",
+      ]);
       if (pending) {
-        await ctx.db.patch(pending._id, { state: "accepted", updatedAt: now });
+        await ctx.db.patch(pending._id, {
+          error: undefined,
+          state: "streaming",
+          updatedAt: now,
+        });
+      }
+    }
+    if (
+      event.type === "session.waiting" ||
+      event.type === "session.failed" ||
+      event.type === "session.completed"
+    ) {
+      const streaming = await activeDelivery(ctx, generation._id, [
+        "streaming",
+      ]);
+      if (streaming) {
+        await ctx.db.patch(streaming._id, {
+          error: undefined,
+          state: "accepted",
+          updatedAt: now,
+        });
       }
     }
     return { duplicate: false };
@@ -352,11 +402,7 @@ export const markDeliveryUnknown = mutation({
       )
       .unique();
     if (!delivery) throw new ConvexError("delivery_not_found");
-    if (
-      delivery.state !== "accepted" &&
-      delivery.state !== "dispatching" &&
-      delivery.state !== "streaming"
-    ) {
+    if (delivery.state !== "dispatching") {
       throw new ConvexError("delivery_transition_invalid");
     }
     const now = Date.now();
@@ -365,12 +411,38 @@ export const markDeliveryUnknown = mutation({
       state: "unknown",
       updatedAt: now,
     });
-    if (delivery.state !== "accepted") {
-      await ctx.db.patch(delivery.messageId, {
-        status: "failed",
-        updatedAt: now,
-      });
+    await ctx.db.patch(thread._id, { status: "failed", updatedAt: now });
+    return null;
+  },
+});
+
+export const recordReconciliationError = mutation({
+  args: {
+    ...actorArgs,
+    threadId: v.id("threads"),
+    clientMessageId: v.string(),
+    error: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const thread = await requireThread(ctx, args.threadId, args);
+    const delivery = await ctx.db
+      .query("deliveries")
+      .withIndex("by_thread_client_message", (q) =>
+        q
+          .eq("threadId", thread._id)
+          .eq("clientMessageId", args.clientMessageId),
+      )
+      .unique();
+    if (!delivery) throw new ConvexError("delivery_not_found");
+    if (delivery.state !== "streaming" && delivery.state !== "unknown") {
+      throw new ConvexError("delivery_transition_invalid");
     }
+    const now = Date.now();
+    await ctx.db.patch(delivery._id, {
+      error: safeError(args.error),
+      updatedAt: now,
+    });
     await ctx.db.patch(thread._id, { status: "failed", updatedAt: now });
     return null;
   },
@@ -391,13 +463,11 @@ async function synchronizeMessages(
       )
       .unique();
     if (!existing && projected.role === "user") {
-      const pendingDelivery = await ctx.db
-        .query("deliveries")
-        .withIndex("by_generation_state_created", (q) =>
-          q.eq("generationId", generationId).eq("state", "dispatching"),
-        )
-        .order("asc")
-        .first();
+      const pendingDelivery = await activeDelivery(ctx, generationId, [
+        "streaming",
+        "dispatching",
+        "unknown",
+      ]);
       if (pendingDelivery)
         existing = await ctx.db.get(pendingDelivery.messageId);
     }
@@ -427,6 +497,24 @@ async function synchronizeMessages(
       });
     }
   }
+}
+
+async function activeDelivery(
+  ctx: MutationCtx,
+  generationId: Id<"generations">,
+  states: readonly ("dispatching" | "streaming" | "unknown")[],
+) {
+  for (const state of states) {
+    const delivery = await ctx.db
+      .query("deliveries")
+      .withIndex("by_generation_state_created", (q) =>
+        q.eq("generationId", generationId).eq("state", state),
+      )
+      .order("asc")
+      .first();
+    if (delivery) return delivery;
+  }
+  return null;
 }
 
 function normalizeStatus(status: string | undefined) {

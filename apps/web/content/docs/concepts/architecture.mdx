@@ -39,4 +39,7 @@ The bridge never turns the Convex mirror into an alternate Eve workflow journal.
 
 An ambiguous follow-up send or input response enters the `unknown` state. This
 state blocks later delivery until reconciliation proves the exact Eve cursor.
-Automatic reconciliation and bounded worker recovery remain release blockers.
+The example bridge performs finite cursor catch-up with backoff. It changes the
+delivery to `streaming` when Eve records `message.received`, then changes it to
+`accepted` at the session boundary. Durable worker leases, retry limits, and
+input-response recovery remain release blockers.
