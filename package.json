@@ -21,13 +21,16 @@
     "changeset": "changeset",
     "release": "changeset publish",
     "verify:package": "bun scripts/verify-package.ts",
-    "version-packages": "changeset version"
+    "version-packages": "changeset version",
+    "verify:eve": "bun scripts/verify-eve.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.7",
     "@changesets/cli": "2.31.1",
     "portless": "0.15.5",
     "turbo": "2.10.9",
-    "typescript": "7.0.2"
+    "typescript": "7.0.2",
+    "eve": "1.0.0-rc.7",
+    "ai": "7.0.137"
   }
 }

@@ -78,6 +78,8 @@ export const createPending = mutation({
     }
 
     const generation = await currentGeneration(ctx, thread);
+    if (generation.streamVersion !== 27)
+      throw new ConvexError("legacy_thread_read_only");
     const latest = await ctx.db
       .query("messages")
       .withIndex("by_thread_order", (q) => q.eq("threadId", thread._id))
@@ -99,6 +101,7 @@ export const createPending = mutation({
       threadId: thread._id,
       generationId: generation._id,
       messageId,
+      messageText: text,
       clientMessageId: args.clientMessageId,
       state: "queued",
       attemptCount: 0,

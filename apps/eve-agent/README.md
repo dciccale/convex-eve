@@ -19,3 +19,7 @@ The authored `agent/channels/eve.ts` keeps Eve's native HTTP/session semantics.
 It accepts Eve's local-development identity and a host-only bearer credential
 shared with the example Convex deployment. Set `EVE_AGENT_TOKEN` to the same
 value on both deployments; the component never receives or persists it.
+
+The agent and Convex host pin Eve 1.0.0-rc.7. Use Node.js 24 or newer. Finish
+Eve 0.48 sessions on their original deployment before upgrading. See the
+[migration guide](../../docs/migrate-eve-v1.md).

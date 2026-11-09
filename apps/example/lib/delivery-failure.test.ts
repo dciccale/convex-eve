@@ -1,6 +1,6 @@
 import { ClientError } from "eve/client";
 import { describe, expect, it } from "vitest";
-import { EveCreateRejectedError } from "./create-eve-session";
+import { EveRequestRejectedError } from "./create-eve-session";
 import { classifyDeliveryFailure } from "./delivery-failure";
 
 describe("delivery failure classification", () => {
@@ -14,12 +14,24 @@ describe("delivery failure classification", () => {
     expect(
       classifyDeliveryFailure(
         "request",
-        new EveCreateRejectedError(401, "unauthorized"),
+        new EveRequestRejectedError(401, "unauthorized"),
       ),
     ).toBe("failed");
   });
 
   it("blocks retry after transport ambiguity or accepted dispatch", () => {
+    expect(
+      classifyDeliveryFailure(
+        "request",
+        new ClientError(502, "upstream failed"),
+      ),
+    ).toBe("unknown");
+    expect(
+      classifyDeliveryFailure(
+        "request",
+        new EveRequestRejectedError(503, "unavailable"),
+      ),
+    ).toBe("unknown");
     expect(
       classifyDeliveryFailure("request", new TypeError("socket reset")),
     ).toBe("unknown");

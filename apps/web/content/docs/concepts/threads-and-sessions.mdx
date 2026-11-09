@@ -1,74 +1,55 @@
 ---
 title: Threads and Eve sessions
-description: Separate stable application conversations from Eve execution identities.
+description: Separate application conversations from Eve execution identities.
 icon: MessagesSquare
 ---
 
-An application thread is the stable product-facing conversation. An Eve session is the durable execution identity underneath a run.
+An application thread is the product-facing conversation. An Eve session is
+the durable execution identity. Its turns can call tools and specialist agents.
+Convex stores the thread and sanitized messages. Eve owns execution and history.
 
-```text
-Application thread
-└── root Eve session
-    ├── turns and steps
-    ├── tool calls and input requests
-    └── child Eve sessions created by specialist subagents
-```
+## Delete a conversation
 
-The public component API should use thread-oriented language where callers manage an ongoing application conversation. Internal bridge and reconciliation APIs retain precise Eve session identifiers.
+The host owns the Eve URL and service credential. It cancels the active turn,
+clears model history, and calls `end()` on the exact session. It waits for each
+control's complete settlement line before it sends the next control. Only then does
+it call `agent.deleteThread(...)` to delete the component's records.
 
-A reset retires the exact Eve session. It must never silently send work to an unintended replacement session.
+A failed control keeps the Convex records available for recovery. A session
+that is already inactive needs no further retirement. Ending a session does
+not create a replacement conversation. Create a new application thread for that.
 
-## Deletion
+## Upgrade an existing conversation
 
-Thread deletion is coordinated by the host because the host owns the Eve URL
-and credentials. For a bound thread, it should cancel any active turn, clear
-the durable model-message history, and reset the exact Eve session before
-calling `agent.deleteThread(...)`. That final component call cascade-deletes
-the Convex messages, deliveries, generations, event coordinates, and thread.
+New generations use stream version 27. Generations made with Eve 0.48 have no
+version marker and remain read-only. Start a new thread to send messages with
+Eve 1.0.0-rc.7. Keep the original deployment available until its sessions finish.
+The v1 bridge does not delete bound legacy threads through the new endpoint.
 
-Eve 0.48 has no literal session-delete operation. This `cancel → clear → reset`
-sequence is its native equivalent: execution stops, model history is removed,
-and the session ID is terminally retired. If an Eve control fails, the host
-must keep the Convex thread so the operation can be retried safely.
-
-## Application API
-
-The installed server client supplies the namespace, so its operations use
-concise thread-oriented names:
+## Server binding
 
 ```ts
-export const eve = new ConvexEve(components.eve);
+import { Agent } from "convex-eve";
+import { components } from "./_generated/api";
 
-await eve.createThread(ctx, input);
-await eve.sendMessage(ctx, input);
-await eve.listMessages(ctx, input);
+export const coach = new Agent(components.eve, { agentId: "coach" });
 ```
 
-Applications do not also install `@convex-dev/agent` to manage these threads.
-`convex-eve` owns the application-facing history and realtime projections; Eve
-owns the agent execution and canonical session event stream.
+Authenticate callers in host functions before passing a trusted `scopeId` and
+`subjectId` to the binding. The component checks both values for every thread.
 
-## React API
-
-React helpers live under `convex-eve/react`. Because the import path already
-provides context, hooks describe the operation without repeating the product
-name:
+## React messages
 
 ```tsx
-import { useSendMessage, useUIMessages } from "convex-eve/react";
+import { useUIMessages } from "convex-eve/react";
 
 const { results, status, loadMore } = useUIMessages(
-  api.chat.listMessages,
-  { threadId },
-  { initialNumItems: 20 },
+	api.chat.listMessages,
+	{ threadId },
+	{ initialNumItems: 20 },
 );
 ```
 
-Canonical application-domain types are simply `Thread`, `Message`, and
-`MessagePart`. The package import already provides the namespace, and consumers
-can alias an import when their application has a collision. Prefixes are
-reserved for genuinely source-specific types such as `EveSessionEvent` or
-protocol types such as `BridgeCommandV1`.
-
-The persisted model remains independent from the AI SDK; optional conversion
-adapters can be provided from `convex-eve/ai`.
+Messages use Eve's native `text`, `file`, `tool`, and `interaction` parts.
+Reasoning and full tool payloads are removed before persistence. Approval
+answers use `interactionId` with the `approve` or `deny` option.

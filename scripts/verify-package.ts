@@ -113,6 +113,7 @@ try {
     "eve",
     "react",
     "vite",
+    "zod",
   ]) {
     await symlink(
       join(packageDir, "node_modules", dependency),
@@ -122,7 +123,7 @@ try {
 
   await writeFile(
     join(consumerRoot, "smoke.ts"),
-    `import { Agent } from "convex-eve";
+    `import { Agent, projectEveStream } from "convex-eve";
 import { useUIMessages } from "convex-eve/react";
 import eveTest from "convex-eve/test";
 import eveConfig from "convex-eve/convex.config.js";
@@ -133,6 +134,7 @@ new Agent(component, { agentId: "smoke" });
 void eveConfig;
 void eveTest.register;
 void useUIMessages;
+void projectEveStream;
 `,
   );
   await writeFile(
@@ -154,9 +156,9 @@ void useUIMessages;
 
   await writeFile(
     join(consumerRoot, "smoke.mjs"),
-    `import { Agent } from "convex-eve";
+    `import { Agent, projectEveStream } from "convex-eve";
 import eveConfig from "convex-eve/convex.config.js";
-if (typeof Agent !== "function" || !eveConfig) process.exit(1);
+if (typeof Agent !== "function" || typeof projectEveStream !== "function" || !eveConfig) process.exit(1);
 `,
   );
   execFileSync(process.execPath, [join(consumerRoot, "smoke.mjs")]);

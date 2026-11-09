@@ -1,194 +1,237 @@
-import type { MessageStreamEvent } from "eve/client";
-import { defaultMessageReducer } from "eve/client";
-import type { EveMessage, EveMessageData, EveMessagePart } from "eve/react";
+import { conversationOf, type SessionStreamEvent } from "eve/client";
+import {
+  activeTurn,
+  deliveries,
+  idle,
+  openInteractions,
+  session,
+  turns,
+} from "eve/events";
+import type { EveMessage, EveMessagePart } from "eve/react";
+import { z } from "zod";
 
-const MAX_TEXT_LENGTH = 64_000;
-const MAX_LABEL_LENGTH = 500;
+const id = z.string().min(1).max(500);
+const label = z.string().transform((value) => value.slice(0, 500));
+const text = z.string().transform((value) => value.slice(0, 64_000));
+const optionalUrl = z
+  .string()
+  .transform((value) =>
+    /^https?:\/\//.test(value) ? value.slice(0, 4096) : undefined,
+  )
+  .optional();
+const answer = z.object({
+  interactionId: id,
+  optionId: id.optional(),
+  text: text.optional(),
+});
 
-function bounded(value: unknown, maximum = MAX_LABEL_LENGTH): string {
-  return String(value ?? "").slice(0, maximum);
+// Strip unknown fields at the component boundary. Sign-in credentials, tool
+// payloads, reasoning, and structured results never enter component storage.
+const interaction = z.object({
+  interactionId: id,
+  turnId: id,
+  stepIndex: z.number().int().nonnegative(),
+  taskId: id.optional(),
+  request: z.object({
+    kind: z.enum(["approval", "question", "sign-in", "budget"]),
+    prompt: text,
+    title: label.optional(),
+    options: z
+      .array(
+        z.object({
+          id,
+          label,
+          description: label.optional(),
+          style: z.enum(["primary", "danger", "default"]).optional(),
+        }),
+      )
+      .max(20)
+      .optional(),
+    allowFreeform: z.boolean().optional(),
+    display: z.enum(["confirmation", "select", "text"]).optional(),
+    signIn: z.object({ name: label, displayName: label.optional() }).optional(),
+  }),
+  call: z.object({ callId: id, name: label }).optional(),
+  status: z.enum(["open", "settled"]),
+  outcome: z
+    .enum([
+      "accepted",
+      "declined",
+      "invalid",
+      "failed",
+      "withdrawn",
+      "interrupted",
+      "abandoned",
+      "expired",
+    ])
+    .optional(),
+  answer: answer.optional(),
+});
+const toolBase = z.object({
+  type: z.literal("tool"),
+  callId: id,
+  stepIndex: z.number().int().nonnegative(),
+  kind: z.enum(["tool", "agent", "skill", "control"]),
+  name: label,
+  label,
+  hidden: z.literal(true).optional(),
+  interaction: interaction.optional(),
+});
+const part = z.union([
+  z.object({
+    type: z.literal("text"),
+    id: id.optional(),
+    text,
+    state: z.enum(["done", "streaming"]).optional(),
+    stepIndex: z.number().int().nonnegative().optional(),
+  }),
+  z.object({ type: z.literal("reasoning") }).transform(() => undefined),
+  z.object({
+    type: z.literal("file"),
+    filename: label.optional(),
+    mediaType: label,
+    size: z.number().nonnegative().optional(),
+    url: optionalUrl,
+    stepIndex: z.number().int().nonnegative().optional(),
+  }),
+  interaction.extend({ type: z.literal("interaction") }),
+  toolBase.extend({ state: z.literal("streaming") }).transform((value) => ({
+    ...value,
+    inputText: "[redacted by convex-eve]",
+  })),
+  toolBase.extend({
+    state: z.enum([
+      "requested",
+      "approval",
+      "running",
+      "blocked",
+      "completed",
+      "failed",
+      "rejected",
+      "cancelled",
+    ]),
+  }),
+]);
+const message = z.object({
+  id,
+  role: z.enum(["user", "assistant"]),
+  metadata: z
+    .object({
+      optimistic: z.literal(true).optional(),
+      imported: z.literal(true).optional(),
+      historyId: id.optional(),
+      turnId: id.optional(),
+      status: z
+        .enum(["complete", "failed", "streaming", "submitted"])
+        .optional(),
+    })
+    .optional(),
+  parts: z
+    .array(part)
+    .transform((parts): EveMessagePart[] =>
+      parts.filter((part) => part !== undefined),
+    ),
+}) satisfies z.ZodType<EveMessage>;
+
+export function sanitizeEveMessage(value: unknown): EveMessage {
+  return message.parse(value);
 }
 
-function safeUrl(value: unknown): string | undefined {
-  if (typeof value !== "string") return undefined;
-  return value.startsWith("https://") || value.startsWith("http://")
-    ? value.slice(0, 4_096)
-    : undefined;
-}
+export const projectionCheckpointSchema = z
+  .object({
+    streamVersion: z.literal(27),
+    line: z.number().int().nonnegative(),
+    index: z.number().int().nonnegative(),
+    nextStreamIndex: z.number().int().positive(),
+    messages: z.array(message),
+    status: z.enum(["closed", "failed", "ready", "streaming", "waiting_input"]),
+    sessionStatus: z.enum(["active", "waiting", "retired", "failed"]),
+    deliveries: z.array(
+      z.object({
+        deliveryId: id,
+        consumed: z.boolean(),
+        outcome: z
+          .enum([
+            "handled",
+            "awaiting-input",
+            "applied",
+            "ignored",
+            "refused",
+            "failed",
+          ])
+          .optional(),
+      }),
+    ),
+  })
+  .refine(
+    (value) => value.nextStreamIndex > value.line,
+    "invalid_complete_line_cursor",
+  );
+export type ProjectionCheckpoint = z.infer<typeof projectionCheckpointSchema>;
 
-function sanitizeInputRequest(value: unknown) {
-  if (!value || typeof value !== "object") return undefined;
-  const request = value as Record<string, unknown>;
-  if (typeof request.requestId !== "string") return undefined;
-  const options = Array.isArray(request.options)
-    ? request.options.slice(0, 20).map((option) => {
-        const item = (option ?? {}) as Record<string, unknown>;
-        return {
-          description:
-            typeof item.description === "string"
-              ? bounded(item.description)
-              : undefined,
-          id: bounded(item.id, 200),
-          label: bounded(item.label, 200),
-          style:
-            item.style === "danger" ||
-            item.style === "default" ||
-            item.style === "primary"
-              ? item.style
-              : undefined,
-        };
-      })
-    : undefined;
-  return {
-    allowFreeform:
-      typeof request.allowFreeform === "boolean"
-        ? request.allowFreeform
-        : undefined,
-    display:
-      request.display === "confirmation" ||
-      request.display === "select" ||
-      request.display === "text"
-        ? request.display
-        : undefined,
-    kind: bounded(request.kind, 100),
-    options,
-    prompt: bounded(request.prompt, 2_000),
-    requestId: bounded(request.requestId, 200),
-  };
-}
-
-function sanitizePart(part: EveMessagePart): EveMessagePart | undefined {
-  if (part.type === "reasoning") return undefined;
-  if (part.type === "text") {
-    return {
-      state: part.state,
-      stepIndex: part.stepIndex,
-      text: bounded(part.text, MAX_TEXT_LENGTH),
-      type: "text",
-    };
+/** Replay from line zero; persist only sanitized snapshots at complete lines. */
+export async function* projectEveStream(
+  source: AsyncIterable<SessionStreamEvent>,
+  afterStreamIndex = 0,
+): AsyncGenerator<ProjectionCheckpoint> {
+  const events: SessionStreamEvent[] = [];
+  let previous: SessionStreamEvent["meta"]["position"] | undefined;
+  let complete = true;
+  for await (const event of source) {
+    if (events.length === 0 && event.type !== "session.started")
+      throw new Error("eve_projection_requires_full_history");
+    const coordinate = event.meta.position;
+    if (
+      previous &&
+      (coordinate.line < previous.line ||
+        (coordinate.line === previous.line &&
+          coordinate.index <= previous.index))
+    )
+      continue;
+    if (!complete && coordinate.line !== previous?.line)
+      throw new Error("incomplete_eve_line");
+    events.push(event);
+    previous = coordinate;
+    complete = event.meta.endOfLine !== false;
+    if (!complete) continue;
+    const nextStreamIndex = event.meta.next ?? coordinate.line + 1;
+    if (nextStreamIndex <= afterStreamIndex) continue;
+    const state = conversationOf(events);
+    const view = state.view;
+    const ended = session(view).status === "ended";
+    const failed = session(view).outcome === "failed";
+    const waiting = openInteractions(view).length > 0;
+    const lastTurn = turns(view).at(-1);
+    const status = ended
+      ? failed
+        ? "failed"
+        : "closed"
+      : waiting
+        ? "waiting_input"
+        : idle(view) && !activeTurn(view)
+          ? lastTurn?.outcome === "failed"
+            ? "failed"
+            : "ready"
+          : "streaming";
+    yield projectionCheckpointSchema.parse({
+      streamVersion: 27,
+      ...coordinate,
+      nextStreamIndex,
+      messages: state.messages,
+      status,
+      sessionStatus: ended
+        ? failed
+          ? "failed"
+          : "retired"
+        : waiting || status === "ready"
+          ? "waiting"
+          : "active",
+      deliveries: deliveries(view).map((delivery) => ({
+        deliveryId: delivery.deliveryId,
+        consumed: delivery.parts !== undefined && delivery.parts.length > 0,
+        outcome: delivery.outcome,
+      })),
+    });
   }
-  if (part.type === "file") {
-    return {
-      filename: part.filename ? bounded(part.filename, 500) : undefined,
-      mediaType: bounded(part.mediaType, 200),
-      size: part.size,
-      stepIndex: part.stepIndex,
-      type: "file",
-      url: safeUrl(part.url),
-    };
-  }
-  if (part.type === "step-start") return { type: "step-start" };
-  if (part.type === "authorization") {
-    return {
-      authorization: part.authorization
-        ? {
-            displayName: part.authorization.displayName
-              ? bounded(part.authorization.displayName)
-              : undefined,
-            expiresAt: part.authorization.expiresAt,
-            instructions: part.authorization.instructions
-              ? bounded(part.authorization.instructions, 2_000)
-              : undefined,
-            url: safeUrl(part.authorization.url),
-            userCode: part.authorization.userCode
-              ? bounded(part.authorization.userCode, 200)
-              : undefined,
-          }
-        : undefined,
-      description: bounded(part.description, 2_000),
-      displayName: bounded(part.displayName),
-      name: bounded(part.name, 200),
-      outcome: part.state === "completed" ? part.outcome : undefined,
-      reason:
-        part.state === "completed" && part.reason
-          ? bounded(part.reason, 1_000)
-          : undefined,
-      state: part.state,
-      stepIndex: part.stepIndex,
-      turnId: bounded(part.turnId, 200),
-      type: "authorization",
-    } as EveMessagePart;
-  }
-
-  const eve = part.toolMetadata?.eve;
-  const approval = part.approval
-    ? {
-        approved:
-          "approved" in part.approval ? part.approval.approved : undefined,
-        id: bounded(part.approval.id, 200),
-        isAutomatic: part.approval.isAutomatic,
-        reason: part.approval.reason
-          ? bounded(part.approval.reason, 1_000)
-          : undefined,
-      }
-    : undefined;
-  const base = {
-    approval,
-    input: "[redacted by convex-eve]",
-    state: part.state,
-    stepIndex: part.stepIndex,
-    toolCallId: bounded(part.toolCallId, 200),
-    toolMetadata: eve
-      ? {
-          eve: {
-            inputRequest: sanitizeInputRequest(eve.inputRequest),
-            inputResponse: eve.inputResponse
-              ? {
-                  optionId: eve.inputResponse.optionId,
-                  requestId: bounded(eve.inputResponse.requestId, 200),
-                  text: eve.inputResponse.text
-                    ? bounded(eve.inputResponse.text, 2_000)
-                    : undefined,
-                }
-              : undefined,
-            kind: eve.kind,
-            name: bounded(eve.name, 200),
-          },
-        }
-      : undefined,
-    toolName: bounded(part.toolName, 200),
-    type: "dynamic-tool" as const,
-  };
-  if (part.state === "output-available") {
-    return {
-      ...base,
-      output: "[redacted by convex-eve]",
-      partial: part.partial,
-    } as EveMessagePart;
-  }
-  if (part.state === "output-error") {
-    return {
-      ...base,
-      errorText: bounded(part.errorText, 1_000),
-    } as EveMessagePart;
-  }
-  return base as EveMessagePart;
-}
-
-export function sanitizeEveMessage(message: EveMessage): EveMessage {
-  const parts = message.parts
-    .map(sanitizePart)
-    .filter((part): part is EveMessagePart => part !== undefined);
-  return {
-    id: bounded(message.id, 300),
-    metadata: message.metadata
-      ? {
-          optimistic: message.metadata.optimistic,
-          status: message.metadata.status,
-          turnId: message.metadata.turnId
-            ? bounded(message.metadata.turnId, 200)
-            : undefined,
-        }
-      : undefined,
-    parts,
-    role: message.role,
-  };
-}
-
-export function applyEveEvent(
-  projection: EveMessageData,
-  event: MessageStreamEvent,
-): EveMessageData {
-  const next = defaultMessageReducer().reduce(projection, event);
-  return { messages: next.messages.map(sanitizeEveMessage) };
+  if (!complete) throw new Error("incomplete_eve_line");
 }

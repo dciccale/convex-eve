@@ -90,6 +90,9 @@ export default function Home() {
   );
   const latestMessage = messages.at(-1);
   const deleteTarget = threads?.find((item) => item._id === deleteTargetId);
+  const legacyThread = Boolean(
+    thread && thread.generation.streamVersion !== 27,
+  );
   const currentThreadDeleting = Boolean(
     threadId && deletingThreadIds.has(threadId),
   );
@@ -101,7 +104,14 @@ export default function Home() {
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const text = message.trim();
-    if (!threadId || !text || submitting || currentThreadDeleting) return;
+    if (
+      !threadId ||
+      !text ||
+      submitting ||
+      currentThreadDeleting ||
+      thread?.generation.streamVersion !== 27
+    )
+      return;
     setSubmitting(true);
     setMessage("");
     try {
@@ -328,12 +338,14 @@ export default function Home() {
                   key={item._id}
                   message={item}
                   disabled={
-                    thread?.status === "streaming" || currentThreadDeleting
+                    thread?.status === "streaming" ||
+                    currentThreadDeleting ||
+                    legacyThread
                   }
-                  onRespond={(requestId, optionId) =>
+                  onRespond={(interactionId, optionId) =>
                     threadId
                       ? respondToInput({
-                          responses: [{ optionId, requestId }],
+                          answers: [{ optionId, interactionId }],
                           threadId,
                         })
                       : Promise.resolve()
@@ -382,6 +394,12 @@ export default function Home() {
               </Button>
             </div>
           ) : null}
+          {legacyThread ? (
+            <p className="mb-3 text-sm text-muted-foreground">
+              This conversation uses an older agent version. Start a new chat to
+              continue.
+            </p>
+          ) : null}
           <form onSubmit={submit} className="mx-auto max-w-3xl">
             <div className="relative">
               <Textarea
@@ -392,6 +410,7 @@ export default function Home() {
                 disabled={
                   !threadId ||
                   currentThreadDeleting ||
+                  legacyThread ||
                   thread?.status === "streaming" ||
                   thread?.status === "failed"
                 }
@@ -404,6 +423,7 @@ export default function Home() {
                   submitting ||
                   !threadId ||
                   currentThreadDeleting ||
+                  legacyThread ||
                   !message.trim() ||
                   thread?.status === "streaming" ||
                   thread?.status === "failed"
@@ -435,7 +455,7 @@ function Message({
 }: {
   message: PersistedEveMessage;
   disabled: boolean;
-  onRespond: (requestId: string, optionId: string) => Promise<unknown>;
+  onRespond: (interactionId: string, optionId: string) => Promise<unknown>;
 }) {
   const user = message.role === "user";
   return (
@@ -467,16 +487,15 @@ function Message({
               </Streamdown>
             );
           }
-          if (part.type === "dynamic-tool") {
-            const request = part.toolMetadata?.eve?.inputRequest;
+          if (part.type === "tool") {
+            if (part.hidden) return null;
+            const interaction = part.interaction;
+            const request = interaction?.request;
             return (
-              <div
-                key={part.toolCallId}
-                className="rounded-lg border bg-card p-4"
-              >
+              <div key={part.callId} className="rounded-lg border bg-card p-4">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="font-medium">{part.toolName}</p>
+                    <p className="font-medium">{part.label}</p>
                     <p className="text-xs text-muted-foreground">
                       {part.state}
                     </p>
@@ -494,11 +513,10 @@ function Message({
                           variant={
                             option.style === "primary" ? "default" : "outline"
                           }
-                          disabled={
-                            disabled || part.state !== "approval-requested"
-                          }
+                          disabled={disabled || interaction?.status !== "open"}
                           onClick={() =>
-                            void onRespond(request.requestId, option.id)
+                            interaction &&
+                            void onRespond(interaction.interactionId, option.id)
                           }
                         >
                           {option.label}
@@ -510,19 +528,32 @@ function Message({
               </div>
             );
           }
-          if (part.type === "authorization") {
+          if (part.type === "interaction") {
             return (
               <div
-                key={`${part.type}-${index}`}
-                className="rounded-lg border p-4"
+                key={part.interactionId}
+                className="space-y-3 rounded-lg border p-4"
               >
-                <p className="font-medium">{part.displayName}</p>
-                <p>{part.description}</p>
-                {part.authorization?.url ? (
-                  <Button asChild size="sm" className="mt-3">
-                    <a href={part.authorization.url}>Connect</a>
-                  </Button>
-                ) : null}
+                <p className="font-medium">
+                  {part.request.title ?? part.request.kind}
+                </p>
+                <p>{part.request.prompt}</p>
+                {part.request.kind === "sign-in" ? (
+                  <p>Complete sign-in in the agent's original channel.</p>
+                ) : (
+                  part.request.options?.map((option) => (
+                    <Button
+                      key={option.id}
+                      size="sm"
+                      disabled={disabled || part.status !== "open"}
+                      onClick={() =>
+                        void onRespond(part.interactionId, option.id)
+                      }
+                    >
+                      {option.label}
+                    </Button>
+                  ))
+                )}
               </div>
             );
           }

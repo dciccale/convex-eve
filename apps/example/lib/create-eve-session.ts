@@ -1,68 +1,104 @@
-export class EveCreateRejectedError extends Error {
+import type { Answer } from "eve/events";
+
+export class EveRequestRejectedError extends Error {
   constructor(
     public readonly status: number,
     message: string,
   ) {
     super(message);
-    this.name = "EveCreateRejectedError";
+    this.name = "EveRequestRejectedError";
   }
 }
-
-export class EveCreateResponseError extends Error {
+export class EveReceiptError extends Error {
   constructor(message: string) {
     super(message);
-    this.name = "EveCreateResponseError";
+    this.name = "EveReceiptError";
   }
 }
-
-interface CreateEveSessionArgs {
+interface BridgeTarget {
   host: string;
-  message: string;
-  operationId: string;
   token?: string;
 }
-
-interface CreatedEveSession {
+interface Receipt {
   sessionId: string;
+  deliveryId: string;
 }
-
 type Fetch = typeof fetch;
 
-/** Create one Eve session for one authenticated bridge operation. */
-export async function createEveSessionOnce(
-  args: CreateEveSessionArgs,
-  request: Fetch = fetch,
-): Promise<CreatedEveSession> {
+async function post(
+  args: BridgeTarget,
+  path: string,
+  payload: unknown,
+  expectedSessionId: string | undefined,
+  request: Fetch,
+): Promise<Receipt> {
   const headers = new Headers({ "content-type": "application/json" });
   if (args.token) headers.set("authorization", `Bearer ${args.token}`);
-
-  const response = await request(new URL("/eve/v1/session", args.host), {
-    body: JSON.stringify({
-      message: args.message,
-      operationId: args.operationId,
-    }),
+  const response = await request(new URL(path, args.host), {
+    body: JSON.stringify(payload),
     headers,
     method: "POST",
-    redirect: args.token ? "error" : undefined,
+    redirect: "error",
   });
-  if (!response.ok) {
-    throw new EveCreateRejectedError(
+  if (!response.ok)
+    throw new EveRequestRejectedError(
       response.status,
       (await response.text()).slice(0, 1_000),
     );
-  }
-
   const body: unknown = await response.json().catch(() => undefined);
   if (
     !body ||
     typeof body !== "object" ||
-    !("sessionId" in body) ||
-    typeof body.sessionId !== "string" ||
-    body.sessionId.length === 0
+    !("deliveryId" in body) ||
+    typeof body.deliveryId !== "string" ||
+    !body.deliveryId
+  )
+    throw new EveReceiptError(
+      "Eve accepted input but returned no delivery ID.",
+    );
+  const sessionId = "sessionId" in body ? body.sessionId : expectedSessionId;
+  if (
+    typeof sessionId !== "string" ||
+    !sessionId ||
+    (expectedSessionId && sessionId !== expectedSessionId)
   ) {
-    throw new EveCreateResponseError(
-      "Eve accepted the create request but returned no session ID.",
+    throw new EveReceiptError(
+      "Eve returned a missing or different session ID.",
     );
   }
-  return { sessionId: body.sessionId };
+  return { sessionId, deliveryId: body.deliveryId };
+}
+
+/** Create once under the authenticated caller's stable operation ID. */
+export function createEveSessionOnce(
+  args: BridgeTarget & { message: string; operationId: string },
+  request: Fetch = fetch,
+): Promise<Receipt> {
+  return post(
+    args,
+    "/eve/v1/session",
+    { message: args.message, operationId: args.operationId },
+    undefined,
+    request,
+  );
+}
+
+/** rc.7 supports idempotencyKey on HTTP, but not in its client send options. */
+export function sendEveInput(
+  args: BridgeTarget & {
+    sessionId: string;
+    idempotencyKey: string;
+    input:
+      | { message: string; turnPolicy: "queue" }
+      | { answers: readonly Answer[] };
+  },
+  request: Fetch = fetch,
+): Promise<Receipt> {
+  return post(
+    args,
+    `/eve/v1/session/${encodeURIComponent(args.sessionId)}`,
+    { ...args.input, idempotencyKey: args.idempotencyKey },
+    args.sessionId,
+    request,
+  );
 }

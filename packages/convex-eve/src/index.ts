@@ -1,15 +1,14 @@
 export type {
   ClientSessionState,
-  InputResponse,
-  MessageStreamEvent,
+  SessionStreamEvent,
 } from "eve/client";
-export { defaultMessageReducer } from "eve/client";
+export type { Answer, Interaction } from "eve/events";
 export type {
   EveMessage,
-  EveMessageData,
   EveMessageMetadata,
   EveMessagePart,
 } from "eve/react";
+export type { Delivery, DeliveryResult } from "eve/sessions";
 export type {
   AgentConfig,
   ComponentActor,
@@ -18,3 +17,5 @@ export type {
   ThreadSummary,
 } from "./agent.js";
 export { Agent } from "./agent.js";
+export type { ProjectionCheckpoint } from "./projection.js";
+export { projectEveStream } from "./projection.js";

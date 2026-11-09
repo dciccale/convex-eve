@@ -1,5 +1,5 @@
 import { ClientError } from "eve/client";
-import { EveCreateRejectedError } from "./create-eve-session";
+import { EveRequestRejectedError } from "./create-eve-session";
 
 export type DispatchPhase = "accepted" | "preflight" | "request";
 
@@ -13,7 +13,10 @@ export function classifyDeliveryFailure(
   if (phase === "preflight") return "failed";
   if (
     phase === "request" &&
-    (error instanceof ClientError || error instanceof EveCreateRejectedError)
+    ((ClientError.is(error) && error.status >= 400 && error.status < 500) ||
+      (error instanceof EveRequestRejectedError &&
+        error.status >= 400 &&
+        error.status < 500))
   ) {
     return "failed";
   }

@@ -14,7 +14,7 @@ icon: BookOpen
 
 Eve is a filesystem-first agent framework with instructions, tools, skills, subagents, sandboxes, schedules, durable sessions, and rich event streams. Convex provides transactions, application data, scheduled work, reactive queries, and typed backend APIs.
 
-Eve already supplies `ClientSessionState`, `MessageStreamEvent`, `EveMessage`, and its default event reducer. `convex-eve` persists those semantics rather than defining a competing chat protocol.
+Eve already supplies `ClientSessionState`, `SessionStreamEvent`, `EveMessage`, and canonical session views. `convex-eve` persists those semantics rather than defining a competing chat protocol.
 
 <Cards>
   <Card title="Architecture" description="Understand the system boundaries and sources of truth." href="/docs/concepts/architecture" />
@@ -30,4 +30,4 @@ Eve already supplies `ClientSessionState`, `MessageStreamEvent`, `EveMessage`, a
 | `convex-eve` | Threads, pending delivery, stream coordinates, sanitized Eve message projections, and reactive pagination |
 | Eve | Agent definitions, model loops, skills, tools, subagents, sandbox, and durable execution |
 
-The component is independent from `@convex-dev/agent`. It borrows familiar storage and React ergonomics where useful, but Eve—not Convex or the AI SDK—owns execution.
+The component is independent from `@convex-dev/agent`. It borrows familiar storage and React ergonomics where useful, but Eve owns execution.

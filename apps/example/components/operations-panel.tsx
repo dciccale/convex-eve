@@ -92,7 +92,7 @@ export function OperationsPanel({
                     title="Events projected"
                     detail={
                       hasEvents
-                        ? `${thread?.generation.nextStreamIndex} ordered Eve events`
+                        ? `${thread?.generation.nextStreamIndex} committed stream lines`
                         : "Waiting for the Eve event stream"
                     }
                     active={isBound && !hasEvents}

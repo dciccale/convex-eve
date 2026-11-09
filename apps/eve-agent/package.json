@@ -13,8 +13,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "eve": "0.48.0",
-    "zod": "4.4.3"
+    "eve": "1.0.0-rc.7",
+    "zod": "4.4.3",
+    "ai": "7.0.137"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.7",

@@ -1,13 +1,8 @@
 import { paginationOptsValidator } from "convex/server";
 import { ConvexError, v } from "convex/values";
-import { Agent } from "convex-eve";
-import {
-  Client,
-  isCurrentTurnBoundaryEvent,
-  type MessageStreamEvent,
-  parseInputResponses,
-} from "eve/client";
-import { createEveSessionOnce } from "../lib/create-eve-session";
+import { Agent, projectEveStream } from "convex-eve";
+import { Client, type ClientSession, parseAnswers } from "eve/client";
+import { createEveSessionOnce, sendEveInput } from "../lib/create-eve-session";
 import {
   classifyDeliveryFailure,
   type DispatchPhase,
@@ -48,8 +43,10 @@ export const deleteThread = action({
 
     if (sessionId) {
       const session = eveClient().sessions.attach(sessionId, {
-        streamIndex: thread.generation.nextStreamIndex,
+        streamIndex: 0,
       });
+      if (thread.generation.streamVersion !== 27)
+        throw new ConvexError("legacy_session_requires_original_deployment");
       await retireEveSession(session);
     }
 
@@ -95,9 +92,9 @@ export const sendMessage = mutation({
 export const respondToInput = mutation({
   args: {
     threadId: v.string(),
-    responses: v.array(
+    answers: v.array(
       v.object({
-        requestId: v.string(),
+        interactionId: v.string(),
         optionId: v.optional(v.string()),
         text: v.optional(v.string()),
       }),
@@ -119,6 +116,7 @@ export const dispatchMessage = internalAction({
       ...actor,
       ...args,
     });
+    if (input.generation.streamVersion !== 27) return;
     if (input.delivery.state === "accepted") {
       await scheduleNextMessage(ctx, args.threadId);
       return;
@@ -140,21 +138,26 @@ export const dispatchMessage = internalAction({
           streamIndex: input.generation.nextStreamIndex,
         });
         phase = "request";
-        const response = await session.send(input.message, {
-          turnPolicy: "queue",
+        const response = await sendEveInput({
+          host: eveHost(),
+          token: process.env.EVE_AGENT_TOKEN,
+          sessionId: session.id,
+          idempotencyKey: `convex-eve:${input.delivery._id}`,
+          input: { message: input.message, turnPolicy: "queue" },
         });
         phase = "accepted";
         await ctx.runMutation(components.eve.runtime.markStreaming, {
           ...actor,
           ...args,
+          eveDeliveryId: response.deliveryId,
         });
         await scheduleReconciliation(ctx, args, 0, 30_000);
-        await persistResponse(
+        await persistSession(
           ctx,
           args.threadId,
-          session.state.sessionId,
+          session,
           input.generation.nextStreamIndex,
-          response,
+          response.deliveryId,
         );
       } else {
         phase = "request";
@@ -176,14 +179,15 @@ export const dispatchMessage = internalAction({
         await ctx.runMutation(components.eve.runtime.markStreaming, {
           ...actor,
           ...args,
+          eveDeliveryId: created.deliveryId,
         });
         await scheduleReconciliation(ctx, args, 0, 30_000);
-        await persistResponse(
+        await persistSession(
           ctx,
           args.threadId,
-          session.state.sessionId,
+          session,
           0,
-          currentTurn(session.stream({ startIndex: 0 })),
+          created.deliveryId,
         );
       }
       await scheduleNextMessage(ctx, args.threadId);
@@ -214,6 +218,7 @@ export const reconcileMessage = internalAction({
       clientMessageId: args.clientMessageId,
       threadId: args.threadId,
     });
+    if (input.generation.streamVersion !== 27) return;
     if (input.delivery.state === "accepted") {
       await scheduleNextMessage(ctx, args.threadId);
       return;
@@ -247,19 +252,14 @@ export const reconcileMessage = internalAction({
           ...actor,
           clientMessageId: args.clientMessageId,
           threadId: args.threadId,
+          eveDeliveryId: created.deliveryId,
         });
       }
 
       const session = eveClient().sessions.attach(sessionId, {
         streamIndex: startIndex,
       });
-      await persistResponse(
-        ctx,
-        args.threadId,
-        sessionId,
-        startIndex,
-        session.stream({ follow: false, startIndex }),
-      );
+      await persistSession(ctx, args.threadId, session, startIndex);
       const refreshed = await ctx.runQuery(components.eve.runtime.getDelivery, {
         ...actor,
         clientMessageId: args.clientMessageId,
@@ -286,9 +286,9 @@ export const reconcileMessage = internalAction({
 export const dispatchResponse = internalAction({
   args: {
     threadId: v.string(),
-    responses: v.array(
+    answers: v.array(
       v.object({
-        requestId: v.string(),
+        interactionId: v.string(),
         optionId: v.optional(v.string()),
         text: v.optional(v.string()),
       }),
@@ -304,13 +304,27 @@ export const dispatchResponse = internalAction({
     const session = eveClient().sessions.attach(sessionId, {
       streamIndex: thread.generation.nextStreamIndex,
     });
-    const response = await session.respond(parseInputResponses(args.responses));
-    await persistResponse(
+    if (thread.generation.streamVersion !== 27)
+      throw new ConvexError("legacy_thread_read_only");
+    const answers = parseAnswers(args.answers);
+    const bytes = new TextEncoder().encode(JSON.stringify(answers));
+    const digest = await crypto.subtle.digest("SHA-256", bytes);
+    const key = Array.from(new Uint8Array(digest), (byte) =>
+      byte.toString(16).padStart(2, "0"),
+    ).join("");
+    const response = await sendEveInput({
+      host: eveHost(),
+      token: process.env.EVE_AGENT_TOKEN,
+      sessionId,
+      idempotencyKey: `convex-eve:answer:${key}`,
+      input: { answers },
+    });
+    await persistSession(
       ctx,
       args.threadId,
-      session.state.sessionId,
+      session,
       thread.generation.nextStreamIndex,
-      response,
+      response.deliveryId,
     );
   },
 });
@@ -319,7 +333,7 @@ function eveClient() {
   const host = eveHost();
   const token = process.env.EVE_AGENT_TOKEN;
   return new Client({
-    host,
+    baseUrl: host,
     auth: token ? { bearer: token } : undefined,
     redirect: token ? "error" : undefined,
   });
@@ -394,30 +408,32 @@ function errorText(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
-async function* currentTurn(events: AsyncIterable<MessageStreamEvent>) {
-  for await (const event of events) {
-    yield event;
-    if (isCurrentTurnBoundaryEvent(event)) return;
-  }
-}
-
-async function persistResponse(
+async function persistSession(
   ctx: ActionCtx,
   threadId: string,
-  eveSessionId: string,
-  startIndex: number,
-  response: AsyncIterable<MessageStreamEvent>,
+  session: ClientSession,
+  afterStreamIndex: number,
+  deliveryId?: string,
 ) {
-  let streamIndex = startIndex;
-  for await (const event of response) {
-    const serializable = JSON.parse(JSON.stringify(event));
-    await ctx.runMutation(components.eve.runtime.ingestEvent, {
+  // SessionView is opaque. Rebuild from Eve on each action instead of persisting
+  // internal tables, raw event payloads, or signed inbox routing credentials.
+  const source = session.stream({
+    startIndex: 0,
+    follow: deliveryId !== undefined,
+  });
+  for await (const checkpoint of projectEveStream(source, afterStreamIndex)) {
+    await ctx.runMutation(components.eve.runtime.ingestProjection, {
       ...actor,
-      event: serializable,
-      eveSessionId,
-      streamIndex,
       threadId,
+      eveSessionId: session.id,
+      checkpoint: JSON.parse(JSON.stringify(checkpoint)),
     });
-    streamIndex += 1;
+    if (
+      deliveryId &&
+      checkpoint.deliveries.some(
+        (receipt) => receipt.deliveryId === deliveryId && receipt.outcome,
+      )
+    )
+      return;
   }
 }

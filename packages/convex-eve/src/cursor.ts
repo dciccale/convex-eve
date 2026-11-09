@@ -1,24 +1,16 @@
-export type StreamIndexDecision =
-  | { kind: "duplicate" }
-  | { kind: "next"; nextStreamIndex: number }
-  | { expected: number; kind: "gap"; received: number }
-  | { kind: "invalid" };
-
-/** Classifies one explicit Eve stream coordinate without inspecting event IDs. */
-export function decideStreamIndex(
+/** Cumulative snapshots can cover skipped source lines, but never move back. */
+export function decideCheckpoint(
   nextStreamIndex: number,
-  streamIndex: number,
-): StreamIndexDecision {
-  if (!Number.isSafeInteger(streamIndex) || streamIndex < 0) {
-    return { kind: "invalid" };
-  }
-  if (streamIndex < nextStreamIndex) return { kind: "duplicate" };
-  if (streamIndex > nextStreamIndex) {
-    return {
-      expected: nextStreamIndex,
-      kind: "gap",
-      received: streamIndex,
-    };
-  }
-  return { kind: "next", nextStreamIndex: streamIndex + 1 };
+  checkpoint: { line: number; index: number; nextStreamIndex: number },
+): "invalid" | "duplicate" | "next" {
+  if (
+    ![checkpoint.line, checkpoint.index, checkpoint.nextStreamIndex].every(
+      Number.isSafeInteger,
+    ) ||
+    checkpoint.line < 0 ||
+    checkpoint.index < 0 ||
+    checkpoint.nextStreamIndex <= checkpoint.line
+  )
+    return "invalid";
+  return checkpoint.nextStreamIndex <= nextStreamIndex ? "duplicate" : "next";
 }

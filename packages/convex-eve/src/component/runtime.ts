@@ -1,9 +1,10 @@
 import { ConvexError, v } from "convex/values";
-import type { MessageStreamEvent } from "eve/client";
-import type { EveMessageData } from "eve/react";
-import { decideStreamIndex } from "../cursor";
+import { decideCheckpoint } from "../cursor";
 import { canClaimDelivery } from "../delivery";
-import { applyEveEvent } from "../projection";
+import {
+  type ProjectionCheckpoint,
+  projectionCheckpointSchema,
+} from "../projection";
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
@@ -44,14 +45,18 @@ export const getDelivery = query({
       throw new ConvexError("delivery_generation_mismatch");
     }
     const message = await ctx.db.get(delivery.messageId);
-    if (!message) throw new ConvexError("delivery_message_not_found");
-    const text = message.parts
-      .filter(
-        (part): part is { text: string; type: "text" } =>
-          part?.type === "text" && typeof part.text === "string",
-      )
-      .map((part) => part.text)
-      .join("\n");
+    if (!message && delivery.messageText === undefined)
+      throw new ConvexError("delivery_message_not_found");
+    const text =
+      delivery.messageText ??
+      message?.parts
+        .filter(
+          (part): part is { text: string; type: "text" } =>
+            part?.type === "text" && typeof part.text === "string",
+        )
+        .map((part) => part.text)
+        .join("\n") ??
+      "";
     return { delivery, generation, message: text, thread };
   },
 });
@@ -65,6 +70,9 @@ export const markDispatching = mutation({
   returns: v.object({ claimed: v.boolean(), deliveryId: v.id("deliveries") }),
   handler: async (ctx, args) => {
     const thread = await requireThread(ctx, args.threadId, args);
+    const generation = await currentGeneration(ctx, thread);
+    if (generation.streamVersion !== 27)
+      throw new ConvexError("legacy_thread_read_only");
     const delivery = await ctx.db
       .query("deliveries")
       .withIndex("by_thread_client_message", (q) =>
@@ -149,6 +157,8 @@ export const bindSession = mutation({
   handler: async (ctx, args) => {
     const thread = await requireThread(ctx, args.threadId, args);
     const generation = await currentGeneration(ctx, thread);
+    if (generation.streamVersion !== 27)
+      throw new ConvexError("legacy_thread_read_only");
     if (
       generation.eveSessionId &&
       generation.eveSessionId !== args.eveSessionId
@@ -178,6 +188,7 @@ export const markStreaming = mutation({
     ...actorArgs,
     threadId: v.id("threads"),
     clientMessageId: v.string(),
+    eveDeliveryId: v.string(),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -194,10 +205,13 @@ export const markStreaming = mutation({
     if (delivery.state !== "dispatching" && delivery.state !== "unknown") {
       throw new ConvexError("delivery_transition_invalid");
     }
+    if (delivery.eveDeliveryId && delivery.eveDeliveryId !== args.eveDeliveryId)
+      throw new ConvexError("eve_delivery_binding_conflict");
     const now = Date.now();
     await ctx.db.patch(delivery._id, {
       error: undefined,
       state: "streaming",
+      eveDeliveryId: args.eveDeliveryId,
       updatedAt: now,
     });
     await ctx.db.patch(thread._id, { status: "streaming", updatedAt: now });
@@ -205,139 +219,74 @@ export const markStreaming = mutation({
   },
 });
 
-export const ingestEvent = mutation({
+/** Commit one cumulative host projection. The host must replay from line zero. */
+export const ingestProjection = mutation({
   args: {
     ...actorArgs,
     threadId: v.id("threads"),
     eveSessionId: v.string(),
-    streamIndex: v.number(),
-    event: v.any(),
+    checkpoint: v.any(),
   },
   returns: v.object({ duplicate: v.boolean() }),
   handler: async (ctx, args) => {
     const thread = await requireThread(ctx, args.threadId, args);
     const generation = await currentGeneration(ctx, thread);
-    if (generation.eveSessionId !== args.eveSessionId) {
+    if (generation.streamVersion !== 27)
+      throw new ConvexError("legacy_thread_read_only");
+    if (generation.eveSessionId !== args.eveSessionId)
       throw new ConvexError("eve_session_binding_mismatch");
-    }
-    const cursorDecision = decideStreamIndex(
-      generation.nextStreamIndex,
-      args.streamIndex,
-    );
-    if (cursorDecision.kind === "invalid")
-      throw new ConvexError("invalid_stream_index");
-    const existingCoordinate = await ctx.db
-      .query("eventCoordinates")
-      .withIndex("by_generation_stream_index", (q) =>
-        q
-          .eq("generationId", generation._id)
-          .eq("streamIndex", args.streamIndex),
-      )
-      .unique();
-    if (existingCoordinate || cursorDecision.kind === "duplicate") {
-      return { duplicate: true };
-    }
-    if (cursorDecision.kind === "gap") {
-      throw new ConvexError(
-        `stream_gap:${cursorDecision.expected}:${cursorDecision.received}`,
-      );
-    }
-
-    const event = args.event as {
-      data?: Record<string, unknown>;
-      meta?: { id?: string };
-      type?: string;
-    };
-    if (!event || typeof event.type !== "string") {
-      throw new ConvexError("invalid_eve_event");
-    }
-    const eventId =
-      typeof event.meta?.id === "string"
-        ? event.meta.id.slice(0, 300)
-        : undefined;
-    if (eventId) {
-      const duplicateId = await ctx.db
-        .query("eventCoordinates")
-        .withIndex("by_generation_event_id", (q) =>
-          q.eq("generationId", generation._id).eq("eventId", eventId),
-        )
-        .unique();
-      if (duplicateId && duplicateId.streamIndex !== args.streamIndex) {
-        throw new ConvexError("eve_event_id_reused");
-      }
-    }
-
-    const projection = JSON.parse(
-      JSON.stringify(
-        applyEveEvent(
-          generation.projection as EveMessageData,
-          args.event as MessageStreamEvent,
-        ),
-      ),
-    ) as EveMessageData;
+    const parsed = projectionCheckpointSchema.safeParse(args.checkpoint);
+    if (!parsed.success) throw new ConvexError("invalid_eve_projection");
+    const checkpoint = parsed.data;
+    const decision = decideCheckpoint(generation.nextStreamIndex, checkpoint);
+    if (decision === "invalid")
+      throw new ConvexError("invalid_stream_position");
+    if (decision === "duplicate") return { duplicate: true };
     const now = Date.now();
-    await synchronizeMessages(ctx, thread._id, generation._id, projection, now);
+    await synchronizeMessages(ctx, thread._id, generation._id, checkpoint, now);
     await ctx.db.insert("eventCoordinates", {
       generationId: generation._id,
       eveSessionId: args.eveSessionId,
-      streamIndex: args.streamIndex,
-      eventId,
-      eventType: event.type.slice(0, 200),
+      streamIndex: checkpoint.line,
+      eventIndex: checkpoint.index,
+      eventType: "projection.checkpoint",
       receivedAt: now,
     });
     await ctx.db.patch(generation._id, {
-      nextStreamIndex: cursorDecision.nextStreamIndex,
-      projection,
-      status:
-        event.type === "session.failed"
-          ? "failed"
-          : event.type === "session.completed"
-            ? "retired"
-            : event.type === "session.waiting"
-              ? "waiting"
-              : "active",
+      nextStreamIndex: checkpoint.nextStreamIndex,
+      status: checkpoint.sessionStatus,
       updatedAt: now,
     });
-
-    const threadStatus =
-      event.type === "input.requested"
-        ? "waiting_input"
-        : event.type === "session.failed" || event.type === "turn.failed"
-          ? "failed"
-          : event.type === "session.completed"
-            ? "closed"
-            : event.type === "session.waiting" ||
-                event.type === "turn.completed"
-              ? "ready"
-              : "streaming";
-    await ctx.db.patch(thread._id, { status: threadStatus, updatedAt: now });
-
-    if (event.type === "message.received") {
-      const pending = await activeDelivery(ctx, generation._id, [
-        "streaming",
-        "dispatching",
-        "unknown",
-      ]);
-      if (pending) {
-        await ctx.db.patch(pending._id, {
+    await ctx.db.patch(thread._id, {
+      status: checkpoint.status,
+      updatedAt: now,
+    });
+    const active = await activeDelivery(ctx, generation._id, [
+      "dispatching",
+      "streaming",
+      "unknown",
+    ]);
+    if (active?.eveDeliveryId) {
+      const receipt = checkpoint.deliveries.find(
+        (item) => item.deliveryId === active.eveDeliveryId,
+      );
+      if (receipt?.outcome) {
+        const failed =
+          receipt.outcome === "failed" || receipt.outcome === "refused";
+        await ctx.db.patch(active._id, {
+          state: failed ? "failed" : "accepted",
           error: undefined,
-          state: "streaming",
           updatedAt: now,
         });
-      }
-    }
-    if (
-      event.type === "session.waiting" ||
-      event.type === "session.failed" ||
-      event.type === "session.completed"
-    ) {
-      const streaming = await activeDelivery(ctx, generation._id, [
-        "streaming",
-      ]);
-      if (streaming) {
-        await ctx.db.patch(streaming._id, {
+        if (failed && (await ctx.db.get(active.messageId)))
+          await ctx.db.patch(active.messageId, {
+            status: "failed",
+            updatedAt: now,
+          });
+      } else if (receipt?.consumed) {
+        await ctx.db.patch(active._id, {
+          state: "streaming",
           error: undefined,
-          state: "accepted",
           updatedAt: now,
         });
       }
@@ -452,10 +401,10 @@ async function synchronizeMessages(
   ctx: MutationCtx,
   threadId: Id<"threads">,
   generationId: Id<"generations">,
-  projection: EveMessageData,
+  checkpoint: ProjectionCheckpoint,
   now: number,
 ) {
-  for (const [order, projected] of projection.messages.entries()) {
+  for (const [order, projected] of checkpoint.messages.entries()) {
     let existing = await ctx.db
       .query("messages")
       .withIndex("by_generation_eve_message", (q) =>
@@ -468,7 +417,15 @@ async function synchronizeMessages(
         "dispatching",
         "unknown",
       ]);
-      if (pendingDelivery)
+      if (
+        pendingDelivery?.eveDeliveryId &&
+        checkpoint.deliveries.some(
+          (receipt) =>
+            receipt.deliveryId === pendingDelivery.eveDeliveryId &&
+            receipt.consumed &&
+            projected.id === `${receipt.deliveryId}:user`,
+        )
+      )
         existing = await ctx.db.get(pendingDelivery.messageId);
     }
     const status = normalizeStatus(projected.metadata?.status);
@@ -476,7 +433,7 @@ async function synchronizeMessages(
       await ctx.db.patch(existing._id, {
         eveMessageId: projected.id,
         order,
-        parts: [...projected.parts],
+        parts: JSON.parse(JSON.stringify(projected.parts)),
         role: projected.role,
         status,
         turnId: projected.metadata?.turnId,
@@ -488,7 +445,7 @@ async function synchronizeMessages(
         generationId,
         eveMessageId: projected.id,
         order,
-        parts: [...projected.parts],
+        parts: JSON.parse(JSON.stringify(projected.parts)),
         role: projected.role,
         status,
         turnId: projected.metadata?.turnId,
@@ -496,6 +453,17 @@ async function synchronizeMessages(
         updatedAt: now,
       });
     }
+  }
+  const retained = new Set(checkpoint.messages.map((message) => message.id));
+  const stored = await ctx.db
+    .query("messages")
+    .withIndex("by_generation_eve_message", (q) =>
+      q.eq("generationId", generationId),
+    )
+    .collect();
+  for (const message of stored) {
+    if (message.eveMessageId && !retained.has(message.eveMessageId))
+      await ctx.db.delete(message._id);
   }
 }
 

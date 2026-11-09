@@ -17,7 +17,7 @@ realtime projections for application-facing agent experiences.
 > [!WARNING]
 > This repository is in early development. The Eve-native persistence path is
 > implemented, and the example bridge performs bounded stream reconciliation.
-> Input-response idempotency, retention controls, and durable worker leases still
+> Input-response recovery, retention controls, and durable worker leases still
 > need production hardening. Install the alpha with `convex-eve@next`; `latest`
 > remains the `0.0.1` name-reservation placeholder.
 
@@ -43,6 +43,8 @@ synchronization state.
 Requirements:
 
 - Bun 1.3.9 or newer
+- Node.js 24 or newer for the Eve server
+- Eve 1.0.0-rc.7 on the host and agent
 - Access to a Convex project
 - An AI Gateway key or another model configuration supported by Eve when
   running real agent turns
@@ -133,9 +135,9 @@ Available now:
 - Eve create-once operation IDs for new sessions in the example bridge
 - Non-retryable `unknown` delivery state for ambiguous external results
 - Bounded Eve stream catch-up with backoff in the example bridge
-- Delivery acceptance only after an Eve session boundary
-- Exact `(eveSessionId, streamIndex)` ingestion and coordinate deduplication
-- Eve `defaultMessageReducer` semantics with bounded persistence sanitization
+- Delivery acceptance only after the matching Eve delivery settles
+- v27 `(eveSessionId, line, index)` checkpoints and replay deduplication
+- Eve `conversationOf` semantics with bounded persistence sanitization
 - `convex-eve/react` with `useUIMessages`
 - Native Eve performance coach example
 
@@ -146,6 +148,8 @@ Next milestone:
 - Add snapshot-based projection rebuilds and retention controls
 - Harden input-response delivery and session controls
 - Expand component state-machine integration tests
+
+See the [Eve v1 migration guide](docs/migrate-eve-v1.md) before upgrading an existing installation.
 
 See the [current v0.1 PRD](docs/convex-eve-agent-v0.1-prd.md) for the focused
 Eve-backed Agent architecture and implementation plan. The

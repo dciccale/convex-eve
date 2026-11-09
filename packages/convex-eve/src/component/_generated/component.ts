@@ -120,8 +120,10 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             clientMessageId: string;
             createdAt: number;
             error?: string;
+            eveDeliveryId?: string;
             generationId: string;
             messageId: string;
+            messageText?: string;
             state:
               | "queued"
               | "dispatching"
@@ -141,6 +143,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             nextStreamIndex: number;
             projection: any;
             status: "unbound" | "active" | "waiting" | "failed" | "retired";
+            streamVersion?: 27;
             threadId: string;
             updatedAt: number;
           };
@@ -173,14 +176,13 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         null | { clientMessageId: string },
         Name
       >;
-      ingestEvent: FunctionReference<
+      ingestProjection: FunctionReference<
         "mutation",
         "internal",
         {
+          checkpoint: any;
           eveSessionId: string;
-          event: any;
           scopeId: string;
-          streamIndex: number;
           subjectId: string;
           threadId: string;
         },
@@ -217,6 +219,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "internal",
         {
           clientMessageId: string;
+          eveDeliveryId: string;
           scopeId: string;
           subjectId: string;
           threadId: string;
@@ -265,6 +268,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             nextStreamIndex: number;
             projection: any;
             status: "unbound" | "active" | "waiting" | "failed" | "retired";
+            streamVersion?: 27;
             threadId: string;
             updatedAt: number;
           };
