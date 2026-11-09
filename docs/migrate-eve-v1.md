@@ -8,9 +8,10 @@ Eve 1.0.0-rc.7, Node.js 24 or newer, and React 19 for the React entry point.
 1. Finish existing 0.48 work on its original Eve deployment. Keep that deployment available until its sessions finish.
 2. Upgrade Eve on the agent and Convex host to `1.0.0-rc.7`. Install `convex-eve@next`.
 3. Deploy the new agent before the new host. Do not run the old dispatch code against the new component protocol.
-4. Regenerate Convex bindings and deploy the updated host functions.
-5. Start new threads for v1 messages. Existing generations remain readable, but cannot accept v1 sends or projections.
-6. Test a message, an approval answer, reconnect recovery, and thread deletion.
+4. Set `EVE_AGENT_URL` to the new agent domain. Verify that the domain resolves to the rc.7 deployment.
+5. Regenerate Convex bindings and deploy the updated host functions.
+6. Start new threads for v1 messages. Existing generations remain readable, but cannot accept v1 sends or projections.
+7. Test a message, an approval answer, reconnect recovery, and thread deletion.
 
 The bridge does not convert pre-0.69 events or old reducer snapshots. Old
 approval controls are read-only. To retire or delete a bound legacy thread,
